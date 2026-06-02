@@ -8,6 +8,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.output_parsers import StrOutputParser
 from dotenv import load_dotenv
 import uvicorn
+import joblib
 
 load_dotenv()
 
@@ -25,11 +26,21 @@ retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
 sessions = {}
 
 
+# ─────────────────────────────────────────────
+# Request models — define what each endpoint expects
+# ─────────────────────────────────────────────
 class ChatRequest(BaseModel):
     message: str
     session_id: str = "default"
 
 
+class SkillGapRequest(BaseModel):
+    skills: dict
+
+
+# ─────────────────────────────────────────────
+# ENDPOINTS
+# ─────────────────────────────────────────────
 @app.get("/")
 def health_check():
     return {"status": "Arivo AI Service is running"}
@@ -80,5 +91,45 @@ If the question is not about jobs, answer from your general knowledge.""",
     return {"response": response, "session_id": request.session_id}
 
 
+@app.post("/skill-gap")
+def skill_gap(request: SkillGapRequest):
+    # Load pre-trained model — trained in skill_gap.py
+    model = joblib.load("skill_gap_model.pkl")
+
+    SKILLS = [
+        "python",
+        "javascript",
+        "react",
+        "node",
+        "machine_learning",
+        "deep_learning",
+        "sql",
+        "docker",
+        "aws",
+        "langchain",
+        "nlp",
+        "pytorch",
+    ]
+
+    # Convert skills dict to ordered array
+    vector = [request.skills.get(skill, 0) for skill in SKILLS]
+
+    # Predict readiness score
+    score = model.predict([vector])[0]
+
+    # Find missing skills
+    missing = [s for s in SKILLS if request.skills.get(s, 0) == 0]
+
+    return {
+        "readiness_score": round(score),
+        "missing_skills": missing,
+        "total_skills": len(SKILLS),
+        "skills_present": sum(vector),
+    }
+
+
+# ─────────────────────────────────────────────
+# Always keep this at the very bottom
+# ─────────────────────────────────────────────
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
