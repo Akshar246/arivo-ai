@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 from langchain_groq import ChatGroq
+from langchain_chroma import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.output_parsers import StrOutputParser
@@ -11,9 +13,15 @@ load_dotenv()
 
 app = FastAPI(title="Arivo AI Service", version="1.0.0")
 
+# LLM
 llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.4)
 
-# Store conversation history per session
+# RAG setup
+embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+vectorstore = Chroma(persist_directory="./arivo_db", embedding_function=embeddings)
+retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+
+# Session memory
 sessions = {}
 
 
@@ -34,14 +42,25 @@ def chat(request: ChatRequest):
 
     history = sessions[request.session_id]
 
+    # Step 1 — Retrieve relevant jobs from ChromaDB
+    relevant_docs = retriever.invoke(request.message)
+    context = "\n".join([doc.page_content for doc in relevant_docs])
+
+    # Step 2 — Build prompt with real job data injected
     prompt = ChatPromptTemplate.from_messages(
         [
             (
                 "system",
                 """You are Arivo, an AI career coach helping
         international students navigate the UK job market.
-        You help with visa sponsored jobs, CV advice,
-        interview preparation and skill gap analysis.""",
+
+Use the following REAL job listings to answer the user's question.
+Only recommend jobs from this list — do not make up jobs.
+
+Real job listings:
+{context}
+
+If the question is not about jobs, answer from your general knowledge.""",
             ),
             MessagesPlaceholder(variable_name="history"),
             ("human", "{input}"),
@@ -50,9 +69,11 @@ def chat(request: ChatRequest):
 
     chain = prompt | llm | StrOutputParser()
 
-    response = chain.invoke({"history": history, "input": request.message})
+    response = chain.invoke(
+        {"context": context, "history": history, "input": request.message}
+    )
 
-    # Save messages to history
+    # Step 3 — Save to memory
     history.append(HumanMessage(content=request.message))
     history.append(AIMessage(content=response))
 
