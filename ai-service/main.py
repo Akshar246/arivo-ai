@@ -7,12 +7,21 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.output_parsers import StrOutputParser
 from dotenv import load_dotenv
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import joblib
 
 load_dotenv()
 
 app = FastAPI(title="Arivo AI Service", version="1.0.0")
+# Allow React frontend to talk to FastAPI
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # LLM
 llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.4)
