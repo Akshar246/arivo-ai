@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File
 from pydantic import BaseModel
 from langchain_groq import ChatGroq
 from langchain_chroma import Chroma
@@ -6,18 +6,23 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.output_parsers import StrOutputParser
-from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
 import uvicorn
 import joblib
+import tempfile
+import os
+import json
+import pdfplumber
 
 load_dotenv()
 
 app = FastAPI(title="Arivo AI Service", version="1.0.0")
-# Allow React frontend to talk to FastAPI
+
+# Allow React frontend and Node backend to talk to FastAPI
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=["http://localhost:5173", "http://localhost:5001"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -36,7 +41,7 @@ sessions = {}
 
 
 # ─────────────────────────────────────────────
-# Request models — define what each endpoint expects
+# REQUEST MODELS
 # ─────────────────────────────────────────────
 class ChatRequest(BaseModel):
     message: str
@@ -45,6 +50,10 @@ class ChatRequest(BaseModel):
 
 class SkillGapRequest(BaseModel):
     skills: dict
+
+
+class CVRequest(BaseModel):
+    cv_text: str
 
 
 # ─────────────────────────────────────────────
@@ -135,6 +144,92 @@ def skill_gap(request: SkillGapRequest):
         "total_skills": len(SKILLS),
         "skills_present": sum(vector),
     }
+
+
+@app.post("/extract-skills")
+def extract_skills(request: CVRequest):
+    # ─────────────────────────────────────────────
+    # AI POWERED SKILL EXTRACTION
+    # Send entire CV text to Groq
+    # Groq reads it intelligently and returns
+    # every skill regardless of field or industry
+    # ─────────────────────────────────────────────
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                """You are an expert CV analyser.
+
+Your job is to extract every skill from the CV text provided.
+
+Include ALL of the following if present:
+- Technical skills and tools
+- Programming languages and frameworks
+- Soft skills and interpersonal skills
+- Domain knowledge and industry expertise
+- Certifications and qualifications
+- Software and platforms
+- Languages spoken
+
+Return ONLY a valid JSON array of strings.
+No explanation. No extra text. Just the JSON array.
+
+Example output:
+["Python", "React", "Team Leadership", "Financial Modelling", "French"]
+""",
+            ),
+            ("human", "Extract all skills from this CV:\n\n{cv_text}"),
+        ]
+    )
+
+    chain = prompt | llm | StrOutputParser()
+    response = chain.invoke({"cv_text": request.cv_text})
+
+    try:
+        cleaned = response.strip()
+        if cleaned.startswith("```"):
+            cleaned = cleaned.split("```")[1]
+            if cleaned.startswith("json"):
+                cleaned = cleaned[4:]
+        skills = json.loads(cleaned)
+    except:
+        skills = []
+
+    return {"skills": skills, "count": len(skills)}
+
+
+@app.post("/extract-pdf")
+async def extract_pdf(file: UploadFile = File(...)):
+    # ─────────────────────────────────────────────
+    # PDF TEXT EXTRACTION using pdfplumber
+    # pdfplumber is the most reliable Python
+    # PDF library — handles complex layouts,
+    # tables, and multi-column CVs perfectly
+    # We save to a temp file, extract, then delete
+    # ─────────────────────────────────────────────
+
+    # Save uploaded file to a temporary location
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+        content = await file.read()
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        text = ""
+        with pdfplumber.open(tmp_path) as pdf:
+            # Loop through every page and extract text
+            for page in pdf.pages:
+                # extract_text() returns None for image pages
+                # so we use "or empty string" as fallback
+                text += page.extract_text() or ""
+
+        print(f"PDF extracted: {len(text)} characters from {len(pdf.pages)} pages")
+
+        return {"text": text, "pages": len(pdf.pages), "characters": len(text)}
+
+    finally:
+        # Always delete temp file — clean up after ourselves
+        os.unlink(tmp_path)
 
 
 # ─────────────────────────────────────────────
