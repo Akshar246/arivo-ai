@@ -75,6 +75,9 @@ app.use(express.json());
 //      /api/auth/me       → getMe function (protected)
 app.use("/api/auth", require("./routes/authRoutes"));
 
+// CV routes — upload and analyse CVs
+app.use("/api/cv", require("./routes/cvRoutes"));
+
 // ─────────────────────────────────────────────
 // HEALTH CHECK — confirms server is running
 // Hit GET / to verify everything is working
