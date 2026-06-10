@@ -6,6 +6,7 @@ import Jobs from "./pages/Jobs";
 import Profile from "./pages/Profile";
 import Chat from "./components/Chat";
 import "./App.css";
+import Landing from "./pages/Landing";
 
 // ─────────────────────────────────────────────
 // NAVIGATION BAR
@@ -88,7 +89,12 @@ function AppRouter() {
   const [page, setPage] = useState("dashboard");
 
   // Not logged in — show login page
+  const [showLanding, setShowLanding] = useState(true);
+
   if (!currentUser) {
+    if (showLanding) {
+      return <Landing onGetStarted={() => setShowLanding(false)} />;
+    }
     return <Login onLogin={() => setPage("dashboard")} />;
   }
 
