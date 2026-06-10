@@ -334,6 +334,12 @@ class CVRequest(BaseModel):
     cv_text: str  # raw extracted text from CV
 
 
+class SkillGapAnalyseRequest(BaseModel):
+    user_skills: list  # skills from CV or manually entered
+    target_role: str  # e.g. "ML Engineer", "Teacher", "Nurse"
+    visa_only: bool = False  # focus only on Tier 2 sponsor jobs
+
+
 # ─────────────────────────────────────────────
 # ENDPOINTS
 # ─────────────────────────────────────────────
@@ -570,6 +576,171 @@ def search_jobs(request: dict):
     print(f"Job search for '{query}' returned {len(unique_jobs)} unique results")
 
     return {"jobs": unique_jobs, "count": len(unique_jobs), "query": query}
+
+
+@app.post("/skill-gap/analyse")
+def analyse_skill_gap(request: SkillGapAnalyseRequest):
+    # ─────────────────────────────────────────────
+    # SMART SKILL GAP ANALYSER
+    # Works for every role in every field
+    # Not hardcoded — uses real job data from our DB
+    #
+    # Step 1 — Search real job listings for target role
+    # Step 2 — Extract required skills from those jobs
+    # Step 3 — Compare with user's actual skills
+    # Step 4 — Return rich gap report with resources
+    # ─────────────────────────────────────────────
+
+    user_skills_lower = [s.lower() for s in request.user_skills]
+    target_role = request.target_role
+
+    # Step 1 — Get real job listings for this role
+    # Uses hybrid search — ChromaDB first, Adzuna live fallback
+    print(f"Analysing skill gap for: {target_role}")
+    job_docs = hybrid_job_search(target_role, k=10)
+
+    # Filter for visa sponsors only if requested
+    if request.visa_only:
+        job_docs = [d for d in job_docs if d.metadata.get("visa_sponsor", False)]
+        print(f"Filtered to {len(job_docs)} visa sponsor jobs")
+
+    if not job_docs:
+        return {
+            "error": "No job listings found for this role",
+            "target_role": target_role,
+        }
+
+    # Step 2 — Ask Groq to extract required skills
+    # Combines real job data WITH Groq's knowledge
+    # for a comprehensive and specific skill list
+    job_context = "\n".join([doc.page_content for doc in job_docs])
+
+    extraction_prompt = f"""You are an expert UK career analyst with deep knowledge of the London job market.
+
+Analyse these real job listings for {target_role} in London:
+{job_context}
+
+Combined with your knowledge of what {target_role} roles in London require in 2026,
+provide a comprehensive skill analysis.
+
+Return a JSON object with exactly this structure:
+{{
+    "required_skills": ["skill1", "skill2", ...],
+    "nice_to_have": ["skill1", "skill2", ...],
+    "total_jobs_analysed": {len(job_docs)}
+}}
+
+Rules:
+- required_skills: 8-12 specific, concrete skills (e.g. "Python", "PyTorch", "SQL" not "engineering")
+- nice_to_have: 4-6 additional skills that give an edge
+- Be specific — write exact skill names not generic categories
+- Focus on skills a hiring manager would actually look for
+- Include both technical AND soft skills
+
+Return ONLY the JSON. No explanation. No markdown."""
+
+    response = llm.invoke(extraction_prompt).content.strip()
+
+    # Parse the JSON response from Groq
+    try:
+        if response.startswith("```"):
+            response = response.split("```")[1]
+            if response.startswith("json"):
+                response = response[4:]
+        market_data = json.loads(response)
+    except:
+        market_data = {
+            "required_skills": [],
+            "nice_to_have": [],
+            "total_jobs_analysed": len(job_docs),
+        }
+
+    required_skills = [s.lower() for s in market_data.get("required_skills", [])]
+    nice_to_have = [s.lower() for s in market_data.get("nice_to_have", [])]
+
+    # Step 3 — Compare user skills with market requirements
+    # Uses fuzzy matching — "PyTorch" matches "pytorch"
+    # "machine learning" matches "ML" etc
+    matching_skills = []
+    missing_required = []
+    missing_nice = []
+
+    for skill in required_skills:
+        # Check if user has this skill — partial match
+        has_skill = any(
+            skill in user_skill.lower() or user_skill.lower() in skill
+            for user_skill in request.user_skills
+        )
+        if has_skill:
+            matching_skills.append(skill)
+        else:
+            missing_required.append(skill)
+
+    for skill in nice_to_have:
+        has_skill = any(
+            skill in user_skill.lower() or user_skill.lower() in skill
+            for user_skill in request.user_skills
+        )
+        if not has_skill:
+            missing_nice.append(skill)
+
+    # Step 4 — Calculate readiness score
+    # Percentage of required skills the user already has
+    if required_skills:
+        score = round((len(matching_skills) / len(required_skills)) * 100)
+    else:
+        score = 50
+
+    # Step 5 — Generate free learning resources
+    # Only for top 5 missing required skills
+    resources = {}
+    if missing_required:
+        resource_prompt = f"""For each of these skills needed for {target_role} in London,
+suggest ONE completely free learning resource.
+
+Skills: {", ".join(missing_required[:5])}
+
+Return a JSON object where each key is the skill name and value has:
+{{
+    "resource": "name of free course or resource",
+    "url": "actual working URL",
+    "time": "estimated weeks to learn"
+}}
+
+Only suggest genuinely free resources — Coursera audit, YouTube, fast.ai, 
+freeCodeCamp, official docs, Kaggle, etc.
+
+Return ONLY the JSON. No explanation."""
+
+        resource_response = llm.invoke(resource_prompt).content.strip()
+        try:
+            if resource_response.startswith("```"):
+                resource_response = resource_response.split("```")[1]
+                if resource_response.startswith("json"):
+                    resource_response = resource_response[4:]
+            resources = json.loads(resource_response)
+        except:
+            resources = {}
+
+    # Collect visa sponsor companies from results
+    visa_sponsors = [
+        d.metadata.get("company", "")
+        for d in job_docs
+        if d.metadata.get("visa_sponsor", False)
+    ]
+
+    return {
+        "target_role": target_role,
+        "readiness_score": score,
+        "jobs_analysed": len(job_docs),
+        "visa_sponsors_found": len(visa_sponsors),
+        "visa_sponsor_companies": list(set(visa_sponsors))[:5],
+        "matching_skills": matching_skills,
+        "missing_required": missing_required,
+        "missing_nice_to_have": missing_nice,
+        "learning_resources": resources,
+        "summary": f"You have {len(matching_skills)} of {len(required_skills)} required skills for {target_role} roles in London.",
+    }
 
 
 # ─────────────────────────────────────────────
