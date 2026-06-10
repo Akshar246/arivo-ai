@@ -525,6 +525,53 @@ async def extract_pdf(file: UploadFile = File(...)):
         os.unlink(tmp_path)
 
 
+@app.post("/jobs/search")
+def search_jobs(request: dict):
+    # ─────────────────────────────────────────────
+    # DEDICATED JOB SEARCH ENDPOINT
+    # Returns structured job data — not a chat response
+    # Frontend can display clean job cards from this
+    # Uses hybrid search — ChromaDB first, Adzuna live fallback
+    # Works for every role in every field
+    # ─────────────────────────────────────────────
+    query = request.get("query", "")
+    if not query:
+        return {"jobs": [], "count": 0}
+
+    # Run hybrid search with the query
+    docs = hybrid_job_search(query, k=10)
+
+    # Convert documents to structured job objects
+    # Frontend can map over these easily
+    jobs = []
+    for doc in docs:
+        jobs.append(
+            {
+                "company": doc.metadata.get("company", "Unknown"),
+                "title": doc.metadata.get("title", "Unknown"),
+                "location": doc.metadata.get("location", "London"),
+                "salary": doc.metadata.get("salary", "Not specified"),
+                "visa_sponsor": doc.metadata.get("visa_sponsor", False),
+                "url": doc.metadata.get("url", ""),
+                "source": doc.metadata.get("source", "adzuna"),
+                "fetched_at": doc.metadata.get("fetched_at", ""),
+            }
+        )
+
+    # Remove duplicate companies — keep best match only
+    seen = set()
+    unique_jobs = []
+    for job in jobs:
+        key = f"{job['company']}-{job['title']}"
+        if key not in seen:
+            seen.add(key)
+            unique_jobs.append(job)
+
+    print(f"Job search for '{query}' returned {len(unique_jobs)} unique results")
+
+    return {"jobs": unique_jobs, "count": len(unique_jobs), "query": query}
+
+
 # ─────────────────────────────────────────────
 # Always keep this at the very bottom
 # This only runs when you execute main.py directly
