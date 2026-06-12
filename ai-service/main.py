@@ -202,6 +202,10 @@ def fetch_live_jobs(query, max_results=10):
             description = job.get("description", "")[:300]
             job_url = job.get("redirect_url", "")
 
+            created = job.get("created", "")
+            contract_time = job.get("contract_time", "")
+            contract_type = job.get("contract_type", "")
+
             # Check against official Home Office data
             visa_sponsor = is_sponsor(company, sponsors)
 
@@ -227,6 +231,10 @@ def fetch_live_jobs(query, max_results=10):
                     "url": job_url,
                     "source": "adzuna_live",
                     "fetched_at": datetime.now().strftime("%Y-%m-%d"),
+                    "description": description,
+                    "created": created,
+                    "contract_time": contract_time,
+                    "contract_type": contract_type,
                 },
             )
             documents.append(doc)
@@ -561,6 +569,10 @@ def search_jobs(request: dict):
                 "url": doc.metadata.get("url", ""),
                 "source": doc.metadata.get("source", "adzuna"),
                 "fetched_at": doc.metadata.get("fetched_at", ""),
+                "description": doc.metadata.get("description", ""),
+                "created": doc.metadata.get("created", ""),
+                "contract_time": doc.metadata.get("contract_time", ""),
+                "contract_type": doc.metadata.get("contract_type", ""),
             }
         )
 
