@@ -16,6 +16,16 @@ import { useAuth } from "../context/AuthContext";
 const API = "http://localhost:5001/api/auth";
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Password strength: 0–3 (weak / ok / strong)
+const pwStrength = (pw) => {
+  let s = 0;
+  if (pw.length >= 6) s++;
+  if (pw.length >= 10) s++;
+  if (/[0-9]/.test(pw) && /[a-zA-Z]/.test(pw)) s++;
+  if (/[^A-Za-z0-9]/.test(pw)) s++;
+  return Math.min(s, 3);
+};
+
 // ── Icons ─────────────────────────────────────────────────────
 const Ic = {
   mail: (s = 16) => (
@@ -206,6 +216,37 @@ const Ic = {
       <path d="M8 12h8M12 8v8" />
     </svg>
   ),
+  check: (s = 15) => (
+    <svg
+      viewBox="0 0 24 24"
+      width={s}
+      height={s}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  ),
+  alert: (s = 13) => (
+    <svg
+      viewBox="0 0 24 24"
+      width={s}
+      height={s}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 9v4M12 17h.01" />
+      <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+    </svg>
+  ),
 };
 
 // ── Field with icon + label + focus glow ──────────────────────
@@ -216,10 +257,11 @@ function Field({
   type = "text",
   value,
   onChange,
-  onEnter,
+  valid,
   trailing,
   placeholder,
   autoComplete,
+  extra,
 }) {
   return (
     <label className="au-field">
@@ -232,11 +274,14 @@ function Field({
           type={type}
           value={value}
           onChange={onChange}
-          onKeyDown={(e) => e.key === "Enter" && onEnter?.()}
           placeholder={placeholder}
           autoComplete={autoComplete}
+          {...(extra || {})}
         />
-        {trailing}
+        <span className="au-trailing">
+          {valid && <span className="au-valid">{Ic.check(15)}</span>}
+          {trailing}
+        </span>
       </span>
     </label>
   );
@@ -248,6 +293,7 @@ function Login({ onLogin }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [showPw, setShowPw] = useState(false);
+  const [capsOn, setCapsOn] = useState(false);
 
   const [form, setForm] = useState({
     name: "",
@@ -269,11 +315,15 @@ function Login({ onLogin }) {
     setError("");
   };
 
-  // ── Submit — same contract as before ────────────────────────
-  const handleSubmit = async () => {
+  const onPwKey = (e) => {
+    if (e.getModifierState) setCapsOn(e.getModifierState("CapsLock"));
+  };
+
+  // ── Submit — same contract, now a real form submit ──────────
+  const handleSubmit = async (e) => {
+    if (e) e.preventDefault();
     if (loading) return;
 
-    // Light client-side validation (server still validates)
     if (!emailRe.test(form.email)) {
       setError("Enter a valid email address.");
       return;
@@ -307,6 +357,10 @@ function Login({ onLogin }) {
     setLoading(false);
   };
 
+  const emailValid = !!form.email && emailRe.test(form.email);
+  const pwValid = form.password.length >= 6;
+  const strength = pwStrength(form.password);
+
   const pwToggle = (
     <button
       type="button"
@@ -336,7 +390,7 @@ function Login({ onLogin }) {
           </h1>
           <p className="au-pitch-sub">
             Arivo finds the visa-sponsored roles, reads your CV, and shows
-            exactly what you're missing — across every field, free.
+            exactly what you're missing - across every field, free.
           </p>
           <ul className="au-trust">
             <li>
@@ -344,15 +398,18 @@ function Login({ onLogin }) {
               register
             </li>
             <li>{Ic.spark(14)} Real London listings, not generic advice</li>
-            <li>{Ic.free(15)} Free, forever — built for students</li>
+            <li>{Ic.free(15)} Free, forever - built for students</li>
           </ul>
         </div>
       </aside>
 
       {/* ── Form panel (right) ───────────────────────────── */}
       <main className="au-panel">
-        <div className="au-form">
+        <form className="au-form" onSubmit={handleSubmit} noValidate>
           <div className="au-logo au-logo--mobile">{Ic.spark(16)} Arivo AI</div>
+          <p className="au-mobile-pitch">
+            Visa-sponsored UK jobs, your CV gap, and interview prep — free.
+          </p>
 
           <div className="au-head">
             <h2 className="au-title">
@@ -368,12 +425,14 @@ function Login({ onLogin }) {
           {/* Mode toggle */}
           <div className="au-tabs" role="group" aria-label="Choose mode">
             <button
+              type="button"
               className={!isRegister ? "is-active" : ""}
               onClick={() => switchMode(false)}
             >
               Sign in
             </button>
             <button
+              type="button"
               className={isRegister ? "is-active" : ""}
               onClick={() => switchMode(true)}
             >
@@ -382,7 +441,11 @@ function Login({ onLogin }) {
           </div>
 
           {/* Error */}
-          {error && <div className="au-error">{error}</div>}
+          {error && (
+            <div className="au-error">
+              {Ic.alert(14)} {error}
+            </div>
+          )}
 
           {/* Fields */}
           <div className="au-fields">
@@ -393,7 +456,7 @@ function Login({ onLogin }) {
                 name="name"
                 value={form.name}
                 onChange={handleChange}
-                onEnter={handleSubmit}
+                valid={!!form.name.trim()}
                 placeholder="Akshar Chanchlani"
                 autoComplete="name"
               />
@@ -406,23 +469,56 @@ function Login({ onLogin }) {
               type="email"
               value={form.email}
               onChange={handleChange}
-              onEnter={handleSubmit}
+              valid={emailValid}
               placeholder="you@email.com"
               autoComplete="email"
+              extra={{
+                inputMode: "email",
+                autoCapitalize: "none",
+                autoCorrect: "off",
+                spellCheck: false,
+              }}
             />
 
-            <Field
-              icon={Ic.lock(16)}
-              label="Password"
-              name="password"
-              type={showPw ? "text" : "password"}
-              value={form.password}
-              onChange={handleChange}
-              onEnter={handleSubmit}
-              trailing={pwToggle}
-              placeholder={isRegister ? "Create a password" : "Your password"}
-              autoComplete={isRegister ? "new-password" : "current-password"}
-            />
+            <div>
+              <Field
+                icon={Ic.lock(16)}
+                label="Password"
+                name="password"
+                type={showPw ? "text" : "password"}
+                value={form.password}
+                onChange={handleChange}
+                valid={pwValid && !isRegister}
+                trailing={pwToggle}
+                placeholder={isRegister ? "Create a password" : "Your password"}
+                autoComplete={isRegister ? "new-password" : "current-password"}
+                extra={{ onKeyUp: onPwKey, onKeyDown: onPwKey }}
+              />
+
+              {capsOn && (
+                <div className="au-caps">{Ic.alert(12)} Caps Lock is on</div>
+              )}
+
+              {isRegister && form.password && (
+                <div className="au-strength">
+                  <div className="au-strength-bars">
+                    {[0, 1, 2].map((i) => (
+                      <span
+                        key={i}
+                        className={`au-strength-bar ${i < strength ? `s${strength}` : ""}`}
+                      />
+                    ))}
+                  </div>
+                  <span className={`au-strength-label s${strength}`}>
+                    {strength <= 1
+                      ? "Weak"
+                      : strength === 2
+                        ? "Okay"
+                        : "Strong"}
+                  </span>
+                </div>
+              )}
+            </div>
 
             {isRegister && (
               <>
@@ -432,7 +528,7 @@ function Login({ onLogin }) {
                   name="nationality"
                   value={form.nationality}
                   onChange={handleChange}
-                  onEnter={handleSubmit}
+                  valid={!!form.nationality.trim()}
                   placeholder="e.g. Indian"
                 />
                 <Field
@@ -441,7 +537,7 @@ function Login({ onLogin }) {
                   name="university"
                   value={form.university}
                   onChange={handleChange}
-                  onEnter={handleSubmit}
+                  valid={!!form.university.trim()}
                   placeholder="e.g. Brunel University London"
                 />
                 <div className="au-grid-2">
@@ -451,7 +547,7 @@ function Login({ onLogin }) {
                     name="course"
                     value={form.course}
                     onChange={handleChange}
-                    onEnter={handleSubmit}
+                    valid={!!form.course.trim()}
                     placeholder="e.g. MSc AI"
                   />
                   <Field
@@ -460,19 +556,19 @@ function Login({ onLogin }) {
                     name="targetRole"
                     value={form.targetRole}
                     onChange={handleChange}
-                    onEnter={handleSubmit}
+                    valid={!!form.targetRole.trim()}
                     placeholder="e.g. ML Engineer"
                   />
                 </div>
+                <p className="au-reassure">
+                  {Ic.lock(13)} We use this to personalise your job matches -
+                  never shared.
+                </p>
               </>
             )}
           </div>
 
-          <button
-            className="au-submit"
-            onClick={handleSubmit}
-            disabled={loading}
-          >
+          <button className="au-submit" type="submit" disabled={loading}>
             {loading ? (
               <span className="au-btn-loading">
                 <span className="au-spinner" />{" "}
@@ -489,18 +585,20 @@ function Login({ onLogin }) {
             {isRegister ? (
               <>
                 Already have an account?{" "}
-                <button onClick={() => switchMode(false)}>Sign in</button>
+                <button type="button" onClick={() => switchMode(false)}>
+                  Sign in
+                </button>
               </>
             ) : (
               <>
                 New to Arivo?{" "}
-                <button onClick={() => switchMode(true)}>
+                <button type="button" onClick={() => switchMode(true)}>
                   Create an account
                 </button>
               </>
             )}
           </div>
-        </div>
+        </form>
       </main>
     </div>
   );
@@ -514,12 +612,24 @@ const styles = `
   --bg:#0d0d18; --surface:#15152a; --inset:#0f0f1e;
   --border:rgba(255,255,255,.08); --border-hi:rgba(102,126,234,.45);
   --text:#f2f2f8; --text-2:#9a9ab0; --text-3:#6a6a80;
- 
+  --red:#ff8f8f; --amber:#ffd200;
+
   display:grid; grid-template-columns:1.05fr 1fr; min-height:100vh; background:var(--bg);
   color:var(--text); font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
 }
 .au button:focus-visible, .au input:focus-visible { outline:2px solid var(--brand-1); outline-offset:2px; }
- 
+
+/* Kill the yellow Chrome autofill box on dark inputs */
+.au input:-webkit-autofill,
+.au input:-webkit-autofill:hover,
+.au input:-webkit-autofill:focus {
+  -webkit-text-fill-color: var(--text);
+  -webkit-box-shadow: 0 0 0 1000px var(--inset) inset;
+  box-shadow: 0 0 0 1000px var(--inset) inset;
+  caret-color: var(--text);
+  transition: background-color 9999s ease-out 0s;
+}
+
 /* ── Brand panel ── */
 .au-brand { position:relative; overflow:hidden; display:flex; align-items:center; padding:3rem;
   background:linear-gradient(150deg,#16162e 0%,#120f24 60%,#0e0c1e 100%); border-right:1px solid var(--border); }
@@ -531,7 +641,7 @@ const styles = `
 @keyframes au-drift1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(40px,30px)} }
 @keyframes au-drift2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-30px,-40px)} }
 @keyframes au-drift3 { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(20px,-20px) scale(1.1)} }
- 
+
 .au-brand-inner { position:relative; max-width:440px; }
 .au-logo { display:inline-flex; align-items:center; gap:8px; font-size:20px; font-weight:800; letter-spacing:-.02em;
   background:linear-gradient(135deg,#fff,#c9c6ff); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; margin-bottom:2.5rem; }
@@ -541,23 +651,25 @@ const styles = `
 .au-trust { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:14px; }
 .au-trust li { display:flex; align-items:center; gap:11px; font-size:13.5px; color:#c8c8da; }
 .au-trust li svg { color:var(--verify-2); flex-shrink:0; }
- 
+
 /* ── Form panel ── */
 .au-panel { display:flex; align-items:center; justify-content:center; padding:2.5rem 1.5rem; }
 .au-form { width:100%; max-width:400px; }
-.au-logo--mobile { display:none; font-size:18px; margin-bottom:1.5rem; }
- 
+.au-logo--mobile { display:none; font-size:18px; margin-bottom:8px; }
+.au-mobile-pitch { display:none; }
+
 .au-head { margin-bottom:22px; }
 .au-title { margin:0 0 6px; font-size:24px; font-weight:700; letter-spacing:-.025em; }
 .au-subtitle { margin:0; font-size:13.5px; color:var(--text-2); }
- 
+
 .au-tabs { display:flex; background:var(--inset); border:1px solid var(--border); border-radius:12px; padding:4px; margin-bottom:20px; }
 .au-tabs button { flex:1; padding:9px; border:none; background:transparent; color:var(--text-2); font-size:13px; font-weight:600; border-radius:8px; cursor:pointer; transition:all .18s; }
 .au-tabs button:hover { color:var(--text); }
 .au-tabs button.is-active { background:linear-gradient(135deg,var(--brand-1),var(--brand-2)); color:#fff; box-shadow:0 4px 14px rgba(102,126,234,.3); }
- 
-.au-error { background:rgba(231,76,60,.10); border:1px solid rgba(231,76,60,.35); color:#ff8f8f; font-size:12.5px; padding:10px 14px; border-radius:10px; margin-bottom:16px; }
- 
+
+.au-error { display:flex; align-items:center; gap:8px; background:rgba(231,76,60,.10); border:1px solid rgba(231,76,60,.35); color:var(--red); font-size:12.5px; padding:10px 14px; border-radius:10px; margin-bottom:16px; }
+.au-error svg { flex-shrink:0; }
+
 .au-fields { display:flex; flex-direction:column; gap:14px; margin-bottom:22px; }
 .au-grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 .au-field { display:block; }
@@ -569,9 +681,31 @@ const styles = `
 .au-input-wrap:focus-within .au-input-ic { color:var(--brand-1); }
 .au-input { flex:1; min-width:0; background:transparent; border:none; outline:none; color:var(--text); font-size:14px; padding:11px 0; font-family:inherit; }
 .au-input::placeholder { color:#56566e; }
+.au-trailing { display:flex; align-items:center; gap:4px; flex-shrink:0; }
+.au-valid { display:flex; color:var(--verify-2); animation:au-pop .2s ease; }
+@keyframes au-pop { from { transform:scale(.6); opacity:0; } to { transform:scale(1); opacity:1; } }
 .au-eye { border:none; background:transparent; color:var(--text-3); cursor:pointer; display:flex; padding:4px; border-radius:6px; transition:color .15s; }
 .au-eye:hover { color:var(--text); }
- 
+
+/* Caps lock warning */
+.au-caps { display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--amber); margin-top:7px; }
+
+/* Password strength */
+.au-strength { display:flex; align-items:center; gap:10px; margin-top:9px; }
+.au-strength-bars { display:flex; gap:5px; flex:1; }
+.au-strength-bar { flex:1; height:4px; border-radius:999px; background:rgba(255,255,255,.08); transition:background .2s; }
+.au-strength-bar.s1 { background:var(--red); }
+.au-strength-bar.s2 { background:var(--amber); }
+.au-strength-bar.s3 { background:var(--verify-2); }
+.au-strength-label { font-size:11px; font-weight:600; }
+.au-strength-label.s1 { color:var(--red); }
+.au-strength-label.s2 { color:var(--amber); }
+.au-strength-label.s3 { color:var(--verify-2); }
+
+/* Reassurance line */
+.au-reassure { display:flex; align-items:center; gap:7px; font-size:11.5px; color:var(--text-3); margin:2px 0 0; }
+.au-reassure svg { flex-shrink:0; }
+
 .au-submit { width:100%; padding:13px; border:none; border-radius:12px; background:linear-gradient(135deg,var(--brand-1),var(--brand-2));
   color:#fff; font-size:14.5px; font-weight:700; cursor:pointer; transition:filter .18s, transform .12s; box-shadow:0 6px 20px rgba(102,126,234,.28); }
 .au-submit:hover:not(:disabled) { filter:brightness(1.1); }
@@ -580,11 +714,19 @@ const styles = `
 .au-btn-loading { display:inline-flex; align-items:center; gap:9px; }
 .au-spinner { width:15px; height:15px; border-radius:50%; border:2px solid rgba(255,255,255,.35); border-top-color:#fff; animation:au-spin .7s linear infinite; }
 @keyframes au-spin { to { transform:rotate(360deg); } }
- 
+
 .au-switch { text-align:center; font-size:13px; color:var(--text-2); margin-top:18px; }
 .au-switch button { border:none; background:none; color:var(--brand-1); font-weight:600; cursor:pointer; font-size:13px; }
 .au-switch button:hover { text-decoration:underline; }
- 
+
+/* Entrance animation (F) */
+@keyframes au-fadeup { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+.au-form .au-head { animation:au-fadeup .45s ease both; }
+.au-form .au-tabs { animation:au-fadeup .45s ease .06s both; }
+.au-form .au-fields { animation:au-fadeup .45s ease .12s both; }
+.au-form .au-submit { animation:au-fadeup .45s ease .18s both; }
+.au-form .au-switch { animation:au-fadeup .45s ease .24s both; }
+
 /* Quality floor */
 @media (prefers-reduced-motion: reduce) { .au * { animation:none !important; transition:none !important; } }
 @media (max-width:860px) {
@@ -593,6 +735,7 @@ const styles = `
   .au-logo--mobile { display:inline-flex; align-items:center; gap:8px;
     background:linear-gradient(135deg,#fff,#c9c6ff); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
   .au-logo--mobile svg { color:var(--brand-1); -webkit-text-fill-color:initial; }
+  .au-mobile-pitch { display:block; font-size:13px; color:var(--text-2); line-height:1.5; margin:0 0 24px; }
 }
 @media (max-width:420px) { .au-grid-2 { grid-template-columns:1fr; } }
 `;
