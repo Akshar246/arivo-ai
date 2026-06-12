@@ -15,6 +15,8 @@ import Landing from "./pages/Landing";
 // Receives page and setPage as props
 // ─────────────────────────────────────────────
 function NavBar({ page, setPage }) {
+  const { logout } = useAuth();
+
   return (
     <div
       style={{
@@ -45,8 +47,8 @@ function NavBar({ page, setPage }) {
         Arivo AI
       </div>
 
-      {/* Nav links — active page gets purple highlight */}
-      <div style={{ display: "flex", gap: "4px" }}>
+      {/* Right side — nav links + logout grouped together */}
+      <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
         {[
           { id: "dashboard", label: "Home" },
           { id: "jobs", label: "Jobs" },
@@ -73,6 +75,59 @@ function NavBar({ page, setPage }) {
             {nav.label}
           </button>
         ))}
+
+        {/* Divider */}
+        <div
+          style={{
+            width: "1px",
+            height: "22px",
+            background: "#333",
+            margin: "0 6px",
+          }}
+        />
+
+        {/* Logout */}
+        <button
+          onClick={logout}
+          title="Log out"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            padding: "6px 14px",
+            background: "transparent",
+            border: "1px solid #333",
+            borderRadius: "999px",
+            color: "#888",
+            cursor: "pointer",
+            fontSize: "13px",
+            transition: "all 0.18s ease",
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = "#fff";
+            e.currentTarget.style.borderColor = "#667eea66";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = "#888";
+            e.currentTarget.style.borderColor = "#333";
+          }}
+        >
+          <svg
+            width="15"
+            height="15"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <path d="m16 17 5-5-5-5" />
+            <path d="M21 12H9" />
+          </svg>
+          Log out
+        </button>
       </div>
     </div>
   );
