@@ -4,7 +4,7 @@ const features = [
   {
     icon: "🔍",
     title: "Visa-Intelligent Job Search",
-    desc: "Every job verified against the official Home Office Tier 2 sponsor register. 120,000+ companies checked automatically in real time.",
+    desc: "Every job verified against the official Home Office Skilled Worker sponsor register. 120,000+ companies checked automatically in real time.",
   },
   {
     icon: "🧠",
@@ -42,7 +42,7 @@ const steps = [
   {
     n: "04",
     title: "Find Visa Sponsored Jobs",
-    desc: "Search any role. Every result is checked against the official Home Office Tier 2 register so you only see jobs that can hire you.",
+    desc: "Search any role. Every result is checked against the official Home Office Skilled Worker register so you only see jobs that can hire you.",
   },
 ];
 
@@ -608,7 +608,7 @@ function Landing({ onGetStarted }) {
             marginBottom: "1.5rem",
           }}
         >
-          Companies verified as official Tier 2 sponsors
+          Companies verified as official Skilled Worker sponsors
         </div>
         <Marquee items={companies} />
       </div>
@@ -1054,7 +1054,10 @@ function Landing({ onGetStarted }) {
                 DATA SOURCES
               </div>
               {[
-                { label: "UK Home Office", sub: "Tier 2 Sponsor Register" },
+                {
+                  label: "UK Home Office",
+                  sub: "Skilled Worker Sponsor Register",
+                },
                 { label: "Adzuna API", sub: "Live Job Listings" },
                 { label: "Groq LLaMA 3.3", sub: "AI Inference" },
                 { label: "HuggingFace", sub: "Embeddings" },

@@ -8,7 +8,7 @@ function Dashboard({ onNavigate }) {
   const actions = [
     {
       label: "Find Jobs",
-      desc: "Search visa-sponsored roles across every field. Verified against the Home Office Tier 2 register in real time.",
+      desc: "Search visa-sponsored roles across every field. Verified against the Home Office Skilled Worker register in real time.",
       tag: "320+ live jobs",
       color: "#7c6fef",
       page: "jobs",
@@ -41,7 +41,11 @@ function Dashboard({ onNavigate }) {
   ];
 
   const platformStats = [
-    { value: "120,000+", label: "Official Tier 2 Sponsors", color: "#7c6fef" },
+    {
+      value: "120,000+",
+      label: "Official Skilled Worker Sponsors",
+      color: "#7c6fef",
+    },
     { value: "320+", label: "Live Jobs Today", color: "#e879f9" },
     { value: "Every", label: "Field Supported", color: "#00d4aa" },
     { value: "100%", label: "Free Forever", color: "#f5a623" },
