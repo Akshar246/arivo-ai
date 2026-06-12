@@ -147,19 +147,26 @@ def format_job(job, sponsors_set):
     description = job.get("description", "")[:300]
     url = job.get("redirect_url", "")
 
+    created = job.get("created", "")  # ISO date
+    contract_time = job.get("contract_time", "")  # "full_time" | "part_time" | ""
+    contract_type = job.get("contract_type", "")  # "permanent" | "contract" | ""
+
     # Check against official Home Office data
     visa_sponsor = is_tier2_sponsor(company, sponsors_set)
 
-    # Format salary
+    # Format salary — collapse when min == max so we don't show "£80,000 - £80,000"
     if salary_min and salary_max:
-        salary = f"£{int(salary_min):,} - £{int(salary_max):,}"
+        if int(salary_min) == int(salary_max):
+            salary = f"£{int(salary_min):,}"
+        else:
+            salary = f"£{int(salary_min):,} - £{int(salary_max):,}"
     elif salary_min:
         salary = f"£{int(salary_min):,}+"
     else:
         salary = "Salary not specified"
 
     return {
-        "text": f"{company} | {title} | {location} | {salary} | {'Official Tier 2 Visa Sponsor' if visa_sponsor else 'Sponsorship not confirmed'} | {description}",
+        "text": f"{company} | {title} | {location} | {salary} | {'Official UK Skilled Worker visa sponsor' if visa_sponsor else 'Sponsorship not confirmed'} | {description}",
         "metadata": {
             "company": company,
             "title": title,
@@ -168,6 +175,10 @@ def format_job(job, sponsors_set):
             "visa_sponsor": visa_sponsor,
             "url": url,
             "source": "adzuna",
+            "description": description,
+            "created": created,
+            "contract_time": contract_time,
+            "contract_type": contract_type,
         },
     }
 
