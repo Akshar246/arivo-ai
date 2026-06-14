@@ -20,8 +20,8 @@ import { useAuth } from "../context/AuthContext";
 // the page. No data is invented beyond what the API returns.
 // ─────────────────────────────────────────────────────────────
 
-const CV_ENDPOINT = "http://localhost:5001/api/cv/upload";
-const GAP_ENDPOINT = "http://localhost:8000/skill-gap/analyse";
+const CV_ENDPOINT = `${import.meta.env.VITE_API_URL}/api/cv/upload`;
+const GAP_ENDPOINT = `${import.meta.env.VITE_AI_URL}/skill-gap/analyse`;
 
 // ── Small utilities ───────────────────────────────────────────
 const prefersReducedMotion = () => {
@@ -51,13 +51,13 @@ const scoreBand = (s) => {
 
 // Count-up hook — respects reduced motion (jumps to target)
 function useCountUp(target, duration = 1000) {
-  const [value, setValue] = useState(0);
+  const end = Number(target) || 0;
+  const reduced = prefersReducedMotion();
+  // Reduced motion: no animation, no effect — just show the final value.
+  const [value, setValue] = useState(reduced ? end : 0);
+
   useEffect(() => {
-    const end = Number(target) || 0;
-    if (prefersReducedMotion()) {
-      setValue(end);
-      return;
-    }
+    if (reduced) return; // nothing to animate, no setState here
     let raf;
     const start = performance.now();
     const tick = (now) => {
@@ -67,7 +67,8 @@ function useCountUp(target, duration = 1000) {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [target, duration]);
+  }, [end, duration, reduced]);
+
   return value;
 }
 

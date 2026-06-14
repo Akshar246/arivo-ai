@@ -325,9 +325,12 @@ function Jobs() {
     setError(false);
     setJobs([]);
     try {
-      const res = await axios.post("http://localhost:8000/jobs/search", {
-        query: q,
-      });
+      const res = await axios.post(
+        `${import.meta.env.VITE_AI_URL}/jobs/search`,
+        {
+          query: q,
+        },
+      );
       setJobs(res.data.jobs || []);
       const next = [
         q,

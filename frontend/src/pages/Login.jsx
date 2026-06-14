@@ -13,7 +13,7 @@ import { useAuth } from "../context/AuthContext";
 //   fields → name, email, password, nationality, university, course, targetRole
 // ─────────────────────────────────────────────────────────────
 
-const API = "http://localhost:5001/api/auth";
+const API = `${import.meta.env.VITE_API_URL}/api/auth`;
 const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Password strength: 0–3 (weak / ok / strong)
