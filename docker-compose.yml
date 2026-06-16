@@ -1,0 +1,130 @@
+# ─────────────────────────────────────────────────────────────
+# DOCKER COMPOSE — Arivo AI
+# Orchestrates all 3 services with one command:
+#   docker compose up --build
+#
+# TEACHING POINT — What Docker Compose does:
+# Without Compose, you'd run 3 separate `docker build` and
+# `docker run` commands, manually manage networking between
+# containers, and handle volumes yourself.
+# Compose defines all of that in one file and handles it for you.
+# ─────────────────────────────────────────────────────────────
+
+services:
+  # ───────────────────────────────────────────────────────────
+  # SERVICE 1: Frontend (React + Vite → nginx)
+  # ───────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend # Docker looks for Dockerfile here
+      dockerfile: Dockerfile
+      args:
+        # TEACHING POINT — Build args for Vite:
+        # These get baked into the JS bundle at build time.
+        # For local dev, they point at localhost.
+        # On AWS, you'll override these with real URLs.
+        VITE_AI_URL: ${VITE_AI_URL:-http://localhost:8000}
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:5001}
+    ports:
+      # TEACHING POINT — ports: "HOST:CONTAINER"
+      # Left side = port on YOUR machine
+      # Right side = port INSIDE the container
+      # So localhost:3000 on your Mac → port 80 inside nginx
+      - "3000:80"
+    depends_on:
+      # Compose starts backend and ai-service BEFORE frontend.
+      # TEACHING POINT: depends_on doesn't wait for the service
+      # to be *healthy*, just for it to *start*. For production,
+      # you'd add healthcheck: conditions. We'll do that on AWS.
+      - backend
+      - ai-service
+    networks:
+      - arivo-network
+
+  # ───────────────────────────────────────────────────────────
+  # SERVICE 2: Backend (Node/Express)
+  # ───────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5001:5001"
+    environment:
+      # TEACHING POINT — environment vs env_file:
+      # We use env_file to load from ./backend/.env
+      # This keeps secrets OUT of docker-compose.yml itself
+      # (which gets committed to git).
+      NODE_ENV: production
+    env_file:
+      - ./backend/.env # loads MONGO_URI, JWT_SECRET etc
+    volumes:
+      # TEACHING POINT — Named volumes vs bind mounts:
+      # This is a NAMED VOLUME. Docker manages it.
+      # cv uploads persist even when the container restarts.
+      # Without this, every `docker compose down` wipes uploads.
+      - cv-uploads:/app/uploads
+    depends_on:
+      - ai-service
+    networks:
+      - arivo-network
+    restart: unless-stopped # auto-restart if it crashes
+
+  # ───────────────────────────────────────────────────────────
+  # SERVICE 3: AI Service (FastAPI + Python)
+  # ───────────────────────────────────────────────────────────
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./ai-service/.env # loads GROQ_API_KEY, ADZUNA keys etc
+    environment:
+      PYTHONUNBUFFERED: 1 # ensures Python logs appear in real time
+    volumes:
+      # ChromaDB data persists across container restarts.
+      # Without this volume, every deploy wipes your job database
+      # and forces a full re-sync. With it, the DB survives.
+      - chromadb-data:/app/arivo_db
+      # The trained skill-gap model also needs to persist.
+      - model-data:/app/models
+    networks:
+      - arivo-network
+    restart: unless-stopped
+
+# ─────────────────────────────────────────────────────────────
+# VOLUMES
+# TEACHING POINT — Named volumes are managed by Docker.
+# They persist data between container restarts and rebuilds.
+# `docker compose down` keeps volumes.
+# `docker compose down -v` deletes volumes (be careful!).
+#
+# Three volumes:
+# cv-uploads    → user CV files (backend)
+# chromadb-data → your job vector database (ai-service)
+# model-data    → skill gap ML model (ai-service)
+# ─────────────────────────────────────────────────────────────
+volumes:
+  cv-uploads:
+  chromadb-data:
+  model-data:
+
+# ─────────────────────────────────────────────────────────────
+# NETWORKS
+# TEACHING POINT — Why a custom network?
+# By default, containers are isolated. They can't talk to each
+# other by name. A custom network lets containers reference
+# each other by SERVICE NAME instead of IP address.
+#
+# So inside the backend container, you can call:
+#   http://ai-service:8000/jobs/search
+# instead of a hardcoded IP that changes every restart.
+#
+# This is also why on AWS, your backend calls the AI service
+# by service name, not localhost.
+# ─────────────────────────────────────────────────────────────
+networks:
+  arivo-network:
+    driver: bridge

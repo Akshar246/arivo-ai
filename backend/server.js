@@ -7,30 +7,39 @@ const path = require("path");
 const connectDB = require("./config/db");
 
 // ─────────────────────────────────────────────
-// LOAD ENV VARIABLES MANUALLY
-// We do this manually because Anaconda has a global
-// dotenv interceptor that breaks the standard approach
-// This reads the .env file directly and loads each line
-// into process.env ourselves — no third party needed
+// LOAD ENV VARIABLES
+// In Docker: env vars are injected directly by
+// docker-compose — no .env file exists in the
+// container (blocked by .dockerignore for security).
+// Locally: we read the .env file manually because
+// Anaconda breaks the standard dotenv approach.
+//
+// This guard handles both cases cleanly:
+// - Docker: file doesn't exist → skip, use injected vars
+// - Local:  file exists → read and load it
 // ─────────────────────────────────────────────
 const envPath = path.join(__dirname, ".env");
-const envFile = fs.readFileSync(envPath, "utf8");
-envFile.split("\n").forEach(line => {
-  const trimmed = line.trim();
-  // Skip empty lines and comments starting with #
-  if (trimmed && !trimmed.startsWith("#")) {
-    // Split on first = only — values may contain = signs
-    const [key, ...valueParts] = trimmed.split("=");
-    process.env[key.trim()] = valueParts.join("=").trim();
-  }
-});
+if (fs.existsSync(envPath)) {
+  const envFile = fs.readFileSync(envPath, "utf8");
+  envFile.split("\n").forEach(line => {
+    const trimmed = line.trim();
+    // Skip empty lines and comments starting with #
+    if (trimmed && !trimmed.startsWith("#")) {
+      // Split on first = only — values may contain = signs
+      const [key, ...valueParts] = trimmed.split("=");
+      process.env[key.trim()] = valueParts.join("=").trim();
+    }
+  });
+  console.log("Loaded env from .env file (local mode)");
+} else {
+  console.log("No .env file found — using injected environment variables (Docker mode)");
+}
 
 // ─────────────────────────────────────────────
 // CONNECT TO MONGODB
 // This runs once when server starts
 // If connection fails — server shuts down
 // ─────────────────────────────────────────────
-
 connectDB();
 
 // Create the Express application
@@ -51,7 +60,10 @@ if (process.env.NODE_ENV === "production") {
 // Without this — browser blocks all frontend requests
 app.use(
   cors({
-    origin: "http://localhost:5173", // React dev server
+    origin: [
+      "http://localhost:5173", // React dev server (local)
+      "http://localhost:3000", // Docker frontend (nginx)
+    ],
     credentials: true,
   })
 );
@@ -88,9 +100,12 @@ app.get("/", (req, res) => {
 
 // ─────────────────────────────────────────────
 // START SERVER — listen for incoming requests
-// Uses PORT from .env or defaults to 5000
+// Uses PORT from .env or defaults to 5001
+// 0.0.0.0 is required in Docker — without it the
+// server only listens inside the container and
+// nothing outside can reach it
 // ─────────────────────────────────────────────
 const PORT = process.env.PORT || 5001;
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`Arivo AI Backend running on port ${PORT}`);
 });

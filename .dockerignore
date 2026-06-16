@@ -1,0 +1,48 @@
+ ─────────────────────────────────────────────────────────────
+# .dockerignore — works exactly like .gitignore but for Docker
+# These paths are excluded when Docker copies files into images.
+#
+# TEACHING POINT: Without this, `COPY . .` would copy
+# node_modules (500MB+), arivo_db (ChromaDB data), .env files,
+# __pycache__, and .git history into your image.
+# That makes images huge, slow to build, and potentially leaks
+# secrets. This file fixes all of that.
+# ─────────────────────────────────────────────────────────────
+ 
+# Dependencies — always reinstalled inside the container
+node_modules
+**/node_modules
+ 
+# Python cache — never needed in containers
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+ 
+# ChromaDB — persisted via Docker volume, not baked into image
+ai-service/arivo_db
+ 
+# Environment files — secrets never go in images
+.env
+**/.env
+ 
+# Git history — not needed in the image
+.git
+.gitignore
+ 
+# Dev/editor files
+.DS_Store
+*.log
+npm-debug.log*
+ 
+# Test files
+*.test.js
+*.spec.js
+ 
+# Build output (frontend — gets built inside Docker)
+dist
+build
+ 
+# Uploaded files — persisted via Docker volume
+backend/uploads
+ 
