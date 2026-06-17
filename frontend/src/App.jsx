@@ -7,6 +7,7 @@ import Profile from "./pages/Profile";
 import Chat from "./components/Chat";
 import "./App.css";
 import Landing from "./pages/Landing";
+import ATS from "./pages/ATS";
 
 // ─────────────────────────────────────────────
 // NAVIGATION BAR
@@ -53,6 +54,7 @@ function NavBar({ page, setPage }) {
           { id: "dashboard", label: "Home" },
           { id: "jobs", label: "Jobs" },
           { id: "chat", label: "Coach" },
+          { id: "ats", label: "ATS" },
           { id: "profile", label: "Profile" },
         ].map((nav) => (
           <button
@@ -168,6 +170,8 @@ function AppRouter() {
         return <Chat />;
       case "profile":
         return <Profile />;
+      case "ats":
+        return <ATS onNavigate={setPage} />;
       default:
         return <Dashboard onNavigate={setPage} />;
     }

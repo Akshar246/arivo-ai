@@ -543,6 +543,297 @@ async def extract_pdf(file: UploadFile = File(...)):
         os.unlink(tmp_path)
 
 
+# ─────────────────────────────────────────────
+# ATS READINESS ANALYSER
+# Honest checks for what ATS systems + recruiters
+# actually look at. Most checks are pure Python
+# (fast, free, deterministic). Only the judgment
+# check (action verbs) uses Groq.
+# ─────────────────────────────────────────────
+class ATSRequest(BaseModel):
+    cv_text: str
+    job_description: str
+
+
+# ── CHECK 1: Parse-ability ───────────────────
+# WHY: If pdfplumber pulled almost no text, the CV is
+# likely a scanned image or graphic-heavy. ATS reads
+# TEXT, not pictures. No text = invisible to ATS.
+def check_parseability(cv):
+    chars = len(cv.strip())
+    if chars > 600:
+        return 20, "pass", "Your CV is text-based and fully readable by ATS."
+    elif chars > 200:
+        return 13, "warn", "Readable, but quite short. Make sure all content is selectable text, not images."
+    else:
+        return 4, "fail", "Very little readable text found. If your CV is a scanned image, ATS cannot read it — export it as a text-based PDF."
+
+
+# ── CHECK 2: Standard sections ───────────────
+# WHY: ATS looks for labelled sections to sort your
+# info into its database. Missing headers = data lost.
+def check_sections(cv):
+    low = cv.lower()
+    wanted = {
+        "experience": ["experience", "employment", "work history"],
+        "education": ["education", "academic", "qualifications"],
+        "skills": ["skills", "technical skills", "competencies"],
+    }
+    found = []
+    missing = []
+    for name, variants in wanted.items():
+        if any(v in low for v in variants):
+            found.append(name)
+        else:
+            missing.append(name)
+    score = round((len(found) / len(wanted)) * 15)
+    if not missing:
+        return score, "pass", "All key sections found: Experience, Education, Skills."
+    return score, "warn", f"Missing clearly-labelled section(s): {', '.join(missing)}. Add plain headers so ATS can sort your info."
+
+
+# ── CHECK 3: Contact info ────────────────────
+# WHY: If ATS can't find your email/phone, a recruiter
+# literally cannot contact you even if you're shortlisted.
+def check_contact(cv):
+    email = re.search(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", cv)
+    phone = re.search(r"(\+?\d[\d\s().-]{7,}\d)", cv)
+    linkedin = "linkedin.com" in cv.lower()
+
+    score = 0
+    notes = []
+    if email: score += 5
+    else: notes.append("no email")
+    if phone: score += 3
+    else: notes.append("no phone number")
+    if linkedin: score += 2
+    else: notes.append("no LinkedIn")
+
+    if score == 10:
+        return 10, "pass", "Email, phone and LinkedIn all detected."
+    return score, "warn" if score >= 5 else "fail", f"Contact gaps: {', '.join(notes)}. Add these at the top in plain text."
+
+
+# ── CHECK 4: Keyword match vs the job (Groq-powered) ──
+# WHY: A dumb word-grab treats "passionate" and "responsibilities"
+# as keywords — unfair scores, junk suggestions. Instead we ask
+# Groq to pull the REAL skills/tools/requirements from the job
+# (same trick as skill-gap), then match those against the CV.
+# Result: fair score + genuinely useful missing-keyword list.
+def check_keywords(cv, jd):
+    cv_low = cv.lower()
+
+    # Ask Groq for the real, concrete keywords a recruiter/ATS wants
+    prompt = f"""Extract the concrete skills, tools, technologies, and hard
+requirements from this job description. Only real, specific terms a recruiter
+would search for (e.g. "Python", "AWS", "stakeholder management", "Agile").
+NO generic filler ("passionate", "team player", "responsibilities", "looking").
+
+Return ONLY a JSON array of 8-15 lowercase strings. No explanation.
+
+Job description:
+{jd[:2500]}"""
+
+    keywords = []
+    try:
+        raw = llm.invoke(prompt).content.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        keywords = [k.lower().strip() for k in json.loads(raw) if k.strip()]
+    except:
+        keywords = []
+
+    # Fallback: if Groq fails, use a light regex grab (still works)
+    if not keywords:
+        stop = {"and","the","for","with","you","are","our","this","that","will",
+                "have","your","from","they","their","what","who","all","any","can",
+                "able","role","work","team","job","etc","need","want","experience",
+                "skills","looking","strong","good","essential"}
+        raw = re.findall(r"[a-zA-Z][a-zA-Z+#]{3,}", jd.lower())
+        keywords = sorted(set(w for w in raw if w not in stop))[:15]
+
+    if not keywords:
+        return 20, "pass", "No specific keywords to match.", []
+
+    # Match each keyword against the CV (partial, like skill-gap)
+    present = [k for k in keywords if k in cv_low]
+    missing = [k for k in keywords if k not in cv_low]
+    ratio = len(present) / len(keywords)
+    score = round(ratio * 20)
+    status = "pass" if ratio >= 0.7 else "warn" if ratio >= 0.4 else "fail"
+    msg = f"Your CV includes {len(present)} of {len(keywords)} key skills the job asks for."
+    return score, status, msg, missing[:12]
+
+
+# ── CHECK 5: Formatting red flags ────────────
+# WHY: ATS reads top-to-bottom, left-to-right. Tables
+# and columns scramble that order. We can't see the PDF
+# layout here, but weird spacing patterns in the
+# extracted text hint at columns/tables.
+def check_formatting(cv):
+    issues = []
+    # Many lines with big internal gaps = likely columns/tables
+    lines = cv.split("\n")
+    gappy = sum(1 for l in lines if re.search(r"\S {4,}\S", l))
+    if gappy > len(lines) * 0.15 and len(lines) > 10:
+        issues.append("possible multi-column or table layout (ATS may scramble this)")
+    # Tabs often mean tables
+    if cv.count("\t") > 5:
+        issues.append("tab characters suggest a table — flatten into single-column text")
+
+    if not issues:
+        return 20, "pass", "No obvious formatting red flags. Looks like clean single-column text."
+    score = 20 - (len(issues) * 6)
+    return max(score, 5), "warn", "Formatting risks: " + "; ".join(issues) + "."
+
+
+# ── CHECK 6: Action verbs + quantification (Groq) ──
+# WHY: This needs JUDGMENT, not pattern-matching.
+# Recruiters reward "Led a team of 5, cutting costs 20%"
+# over "responsible for things". Only an LLM can judge this well.
+def check_action_verbs(cv):
+    prompt = f"""You are a CV reviewer. Look at this CV text and judge ONLY the
+bullet points / experience descriptions.
+
+Return ONLY valid JSON:
+{{
+  "score": <0-15 integer>,
+  "status": "pass" | "warn" | "fail",
+  "message": "<one short sentence of feedback>",
+  "weak_examples": ["<up to 2 weak phrases found, or empty>"]
+}}
+
+Scoring guide:
+- 12-15: strong action verbs AND quantified results (numbers, %, scale)
+- 7-11: decent verbs but little quantification
+- 0-6: passive/weak language ("responsible for", "duties included")
+
+CV text:
+{cv[:2500]}"""
+    try:
+        raw = llm.invoke(prompt).content.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        data = json.loads(raw)
+        return (int(data.get("score", 7)), data.get("status", "warn"),
+                data.get("message", ""), data.get("weak_examples", []))
+    except:
+        return 7, "warn", "Could not fully analyse phrasing — aim for strong verbs and numbers.", []
+
+# ── INTERNATIONAL STUDENT LENS (the hero feature) ──
+# WHY: International students often format CVs to home-country
+# norms — photo, DOB, nationality, marital status, "CV" title.
+# These are NORMAL abroad but in the UK they: (1) break some ATS
+# parsers, (2) trigger anti-discrimination filters (UK recruiters
+# are trained to discard CVs with photos/personal data), and
+# (3) signal "not familiar with UK norms". Nobody tells students
+# this. We catch it automatically. This is Arivo's signature.
+def check_international_lens(cv):
+    low = cv.lower()
+    flags = []
+
+    # Date of birth / age
+    if re.search(r"\b(date of birth|d\.?o\.?b\.?|born on)\b", low) or \
+       re.search(r"\b(age)\s*[:\-]?\s*\d{1,2}\b", low):
+        flags.append({
+            "issue": "Date of birth / age detected",
+            "why": "UK CVs never include age or DOB. Recruiters must avoid age data by law — many discard CVs that show it.",
+            "fix": "Delete your date of birth and age completely."
+        })
+
+    # Nationality / visa status line
+    if re.search(r"\b(nationality|citizenship|passport|visa status)\b", low):
+        flags.append({
+            "issue": "Nationality / passport details detected",
+            "why": "UK CVs omit nationality. You only state 'Eligible to work in the UK' if relevant — never passport or citizenship details.",
+            "fix": "Remove nationality and passport lines. If needed, add one line: 'Eligible to work in the UK with Skilled Worker sponsorship.'"
+        })
+
+    # Marital status / gender / religion
+    if re.search(r"\b(marital status|married|single|divorced|gender|sex|religion)\b", low):
+        flags.append({
+            "issue": "Personal details (marital status / gender / religion)",
+            "why": "These are illegal for UK employers to consider. CVs that include them look unprofessional and risk being discarded.",
+            "fix": "Delete marital status, gender, and religion entirely."
+        })
+
+    # "Curriculum Vitae" as a title header
+    if re.search(r"\bcurriculum vitae\b", low):
+        flags.append({
+            "issue": "'Curriculum Vitae' used as a title",
+            "why": "UK CVs don't put 'Curriculum Vitae' or 'Resume' as a heading. The page should start with your name.",
+            "fix": "Replace the 'Curriculum Vitae' header with just your full name."
+        })
+
+    # Photo (we can't see images, but these words hint at one)
+    if re.search(r"\b(photo|photograph|passport size|passport-size)\b", low):
+        flags.append({
+            "issue": "A photo may be included",
+            "why": "UK CVs never include a photo. Many recruiters auto-reject CVs with photos to avoid bias claims.",
+            "fix": "Remove any photo from your CV."
+        })
+
+    # Full home address (line with postal patterns common abroad)
+    if re.search(r"\b(father'?s name|mother'?s name|parent'?s name)\b", low):
+        flags.append({
+            "issue": "Parent / family details detected",
+            "why": "Common on CVs in some countries, but never used in the UK and seen as unprofessional here.",
+            "fix": "Remove all family/parent details."
+        })
+
+    # Build the verdict
+    if not flags:
+        return {
+            "status": "clear",
+            "headline": "No home-country CV conventions detected — your CV follows UK norms.",
+            "flags": []
+        }
+    return {
+        "status": "flags_found",
+        "headline": f"Found {len(flags)} thing(s) that are normal abroad but hurt you in the UK market.",
+        "flags": flags
+    }
+
+@app.post("/ats/analyse")
+def ats_analyse(request: ATSRequest):
+    cv = request.cv_text
+    jd = request.job_description
+
+    # Run all six scored checks
+    p_score, p_status, p_msg = check_parseability(cv)
+    s_score, s_status, s_msg = check_sections(cv)
+    c_score, c_status, c_msg = check_contact(cv)
+    k_score, k_status, k_msg, missing_keywords = check_keywords(cv, jd)
+    f_score, f_status, f_msg = check_formatting(cv)
+    v_score, v_status, v_msg, weak_bullets = check_action_verbs(cv)
+
+    # Run the International Student Lens (separate hero — not scored)
+    international_lens = check_international_lens(cv)
+
+    categories = [
+        {"name": "Parse-ability", "score": p_score, "max": 20, "status": p_status, "detail": p_msg},
+        {"name": "Keyword Match", "score": k_score, "max": 20, "status": k_status, "detail": k_msg},
+        {"name": "Standard Sections", "score": s_score, "max": 15, "status": s_status, "detail": s_msg},
+        {"name": "Contact Info", "score": c_score, "max": 10, "status": c_status, "detail": c_msg},
+        {"name": "Formatting", "score": f_score, "max": 20, "status": f_status, "detail": f_msg},
+        {"name": "Action Verbs", "score": v_score, "max": 15, "status": v_status, "detail": v_msg},
+    ]
+
+    overall = sum(c["score"] for c in categories)
+
+    return {
+        "overall_score": overall,
+        "categories": categories,
+        "missing_keywords": missing_keywords,
+        "weak_bullets": weak_bullets,
+        "international_lens": international_lens,
+    }
+
+
 @app.post("/jobs/search")
 def search_jobs(request: dict):
     # ─────────────────────────────────────────────
