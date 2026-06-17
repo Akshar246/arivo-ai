@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:8000";
 const FormData = require("form-data");
 
 // ─────────────────────────────────────────────
@@ -20,7 +21,7 @@ const extractTextFromPDF = async (filePath) => {
 
   // Send to Python AI service for extraction
   const response = await axios.post(
-    "http://localhost:8000/extract-pdf",
+    `${AI_SERVICE_URL}/extract-pdf`,
     form,
     { headers: form.getHeaders() }
   );
@@ -43,7 +44,7 @@ const extractSkillsWithAI = async (cvText) => {
     const truncatedText = cvText.substring(0, 3000);
 
     const response = await axios.post(
-      "http://localhost:8000/extract-skills",
+      `${AI_SERVICE_URL}/extract-skills`,
       { cv_text: truncatedText }
     );
     return response.data.skills;
