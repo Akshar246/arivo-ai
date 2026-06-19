@@ -390,7 +390,7 @@ function Results({ result, reset, onNavigate }) {
           <h2 className="ats-res-h">Your ATS Readiness</h2>
           <p className="ats-res-p">
             This is how well your CV holds up against automated screening for
-            the job you pasted. Work through the fixes below — each one lifts
+            the job you pasted. Work through the fixes below - each one lifts
             your real-world chances.
           </p>
           <button className="ats-btn-ghost" onClick={reset}>
@@ -424,7 +424,7 @@ function Results({ result, reset, onNavigate }) {
           </div>
         ) : (
           <div className="ats-lens-clear">
-            Your CV follows UK conventions — no home-country formatting issues
+            Your CV follows UK conventions - no home-country formatting issues
             found.
           </div>
         )}
@@ -442,7 +442,7 @@ function Results({ result, reset, onNavigate }) {
       {missing_keywords.length > 0 && (
         <section className="ats-block">
           <h3 className="ats-section-h">
-            Keywords the job wants — missing from your CV
+            Keywords the job wants - missing from your CV
           </h3>
           <p className="ats-block-sub">
             Weave the real ones into your experience and skills (only if they're
