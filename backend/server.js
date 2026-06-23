@@ -61,9 +61,10 @@ if (process.env.NODE_ENV === "production") {
 app.use(
   cors({
     origin: [
-      "http://localhost:5173", // React dev server (local)
-      "http://localhost:3000", // Docker frontend (nginx)
-    ],
+      "http://localhost:5173",
+      "http://localhost:3000",
+      process.env.FRONTEND_URL, // real Vercel domain, set in Render dashboard
+    ].filter(Boolean),
     credentials: true,
   })
 );
