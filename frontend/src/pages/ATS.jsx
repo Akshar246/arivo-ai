@@ -3,12 +3,14 @@ import axios from "axios";
 
 // ─────────────────────────────────────────────────────────────
 // ATS READINESS PAGE · Arivo AI
-// 3-state journey: invite (live console) → analysing → results.
-// Backend contract unchanged:
+// Stages: invite (persistent 2-column console, idle → analysing
+// checklist happens IN PLACE in the right column) → results.
+// Backend contract:
 //   POST /extract-pdf  → { text }
 //   POST /ats/analyse  → { overall_score, categories[], missing_keywords[],
-//                          weak_bullets[], international_lens{status,headline,flags[]} }
-// Palette aligned to the new purple system.
+//                          weak_bullets[], international_lens{...},
+//                          recruiter_notes }
+// Plain CSS-in-JS system, matching the rest of the app.
 // ─────────────────────────────────────────────────────────────
 
 const AI_URL = import.meta.env.VITE_AI_URL;
@@ -31,28 +33,35 @@ const C = {
   red: "#ff7a7a",
 };
 
-const STEPS = [
-  "Reading your CV",
-  "Checking ATS parse-ability",
-  "Matching keywords to the job",
-  "Scanning sections & contact details",
-  "Judging your bullet points",
-  "Running the International Student Lens",
-];
-
-// What the right-hand console advertises (educational + builds trust)
+// One unified list of checks. Idle before analysis, animates through
+// pending → active → done during analysis, in place, in the right
+// column — no separate full-screen loading stage.
 const CHECKS = [
-  { t: "Parse-ability", d: "Can the software read your CV at all?" },
-  { t: "Keyword match", d: "Do your words match what the job asks for?" },
   {
-    t: "Sections & contact",
-    d: "Are the expected sections and details there?",
+    key: "parse",
+    label: "Parse-ability",
+    detail: "Can the software read your CV at all?",
   },
   {
-    t: "Action verbs & impact",
-    d: "Do your bullets show real, measurable results?",
+    key: "keywords",
+    label: "Semantic Match",
+    detail: "Do your words match the job, in any phrasing?",
   },
-  { t: "Formatting", d: "Anything that quietly breaks an automated parser?" },
+  {
+    key: "sections",
+    label: "Sections & contact",
+    detail: "Are the expected sections and details there?",
+  },
+  {
+    key: "lens",
+    label: "International Student Lens",
+    detail: "Home-country conventions that fail UK screening.",
+  },
+  {
+    key: "verbs",
+    label: "Action verbs & impact",
+    detail: "Do your bullets show real, measurable results?",
+  },
 ];
 
 const prefersReducedMotion = () =>
@@ -93,16 +102,26 @@ const statusColor = (status) =>
   status === "pass" ? C.green : status === "warn" ? C.amber : C.red;
 
 function ATS({ onNavigate }) {
-  const [stage, setStage] = useState("invite");
+  const [stage, setStage] = useState("invite"); // invite | results
+  const [analysing, setAnalysing] = useState(false);
+  const [stepDone, setStepDone] = useState(-1);
+
   const [jobText, setJobText] = useState("");
   const [file, setFile] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState("");
-  const [stepDone, setStepDone] = useState(-1);
+
+  const [extractedText, setExtractedText] = useState("");
+  const [extracting, setExtracting] = useState(false);
+  const [showRaw, setShowRaw] = useState(false);
+
   const [result, setResult] = useState(null);
   const fileInput = useRef(null);
 
-  const pickFile = (f) => {
+  // Extract text the moment a CV is uploaded — not on click. This lets
+  // "see what the robot sees" work immediately, and analyse() reuses
+  // this instead of re-extracting.
+  const pickFile = async (f) => {
     if (!f) return;
     if (f.type !== "application/pdf") {
       setError("Please upload a PDF file — that's what ATS systems read.");
@@ -114,6 +133,19 @@ function ATS({ onNavigate }) {
     }
     setError("");
     setFile(f);
+    setExtractedText("");
+    setExtracting(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", f);
+      const ex = await axios.post(EXTRACT_ENDPOINT, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      setExtractedText(ex.data?.text || "");
+    } catch {
+      // Non-fatal here — analyse() retries extraction if this failed
+    }
+    setExtracting(false);
   };
 
   const onDrop = (e) => {
@@ -135,23 +167,27 @@ function ATS({ onNavigate }) {
       return;
     }
 
-    setStage("analysing");
+    setAnalysing(true);
     setStepDone(-1);
 
     let tick = 0;
     const timer = setInterval(() => {
       tick += 1;
-      setStepDone((d) => (d < STEPS.length - 2 ? d + 1 : d));
-      if (tick >= STEPS.length - 1) clearInterval(timer);
-    }, 650);
+      setStepDone((d) => (d < CHECKS.length - 2 ? d + 1 : d));
+      if (tick >= CHECKS.length - 1) clearInterval(timer);
+    }, 600);
 
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const ex = await axios.post(EXTRACT_ENDPOINT, fd, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      const cvText = ex.data?.text || "";
+      let cvText = extractedText;
+      if (!cvText) {
+        const fd = new FormData();
+        fd.append("file", file);
+        const ex = await axios.post(EXTRACT_ENDPOINT, fd, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+        cvText = ex.data?.text || "";
+        setExtractedText(cvText);
+      }
 
       const res = await axios.post(ATS_ENDPOINT, {
         cv_text: cvText,
@@ -159,12 +195,15 @@ function ATS({ onNavigate }) {
       });
 
       clearInterval(timer);
-      setStepDone(STEPS.length - 1);
+      setStepDone(CHECKS.length - 1);
       setResult(res.data);
-      setTimeout(() => setStage("results"), 600);
+      setTimeout(() => {
+        setAnalysing(false);
+        setStage("results");
+      }, 500);
     } catch (err) {
       clearInterval(timer);
-      setStage("invite");
+      setAnalysing(false);
       setError(
         err.response?.data?.detail ||
           "Couldn't analyse the CV. Make sure the AI service is running and try again.",
@@ -178,6 +217,9 @@ function ATS({ onNavigate }) {
     setFile(null);
     setJobText("");
     setStepDone(-1);
+    setAnalysing(false);
+    setExtractedText("");
+    setShowRaw(false);
     setError("");
   };
 
@@ -185,7 +227,9 @@ function ATS({ onNavigate }) {
     <div style={{ background: C.bg, minHeight: "calc(100vh - 56px)" }}>
       <style>{css}</style>
       <div className="ats-wrap">
-        {stage === "invite" && (
+        {showRaw ? (
+          <RobotEyes text={extractedText} onClose={() => setShowRaw(false)} />
+        ) : stage === "invite" ? (
           <Invite
             jobText={jobText}
             setJobText={setJobText}
@@ -197,13 +241,104 @@ function ATS({ onNavigate }) {
             pickFile={pickFile}
             error={error}
             analyse={analyse}
+            analysing={analysing}
+            stepDone={stepDone}
+            extractedText={extractedText}
+            extracting={extracting}
+            onShowRaw={() => setShowRaw(true)}
           />
-        )}
-        {stage === "analysing" && <Analysing stepDone={stepDone} />}
-        {stage === "results" && result && (
-          <Results result={result} reset={reset} onNavigate={onNavigate} />
+        ) : (
+          result && (
+            <Results
+              result={result}
+              reset={reset}
+              onNavigate={onNavigate}
+              extractedText={extractedText}
+              onShowRaw={() => setShowRaw(true)}
+            />
+          )
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Robot Eyes — raw extracted-text terminal view ───────────────
+function RobotEyes({ text, onClose }) {
+  return (
+    <div className="ats-robot">
+      <div className="ats-robot-head">
+        <div>
+          <div className="ats-robot-title">🤖 What the robot sees</div>
+          <div className="ats-robot-sub">
+            The exact text our parser extracted from your PDF — no formatting,
+            no styling, just what ATS software actually reads.
+          </div>
+        </div>
+        <button className="ats-btn-ghost" onClick={onClose}>
+          ← Back to the view
+        </button>
+      </div>
+      <pre className="ats-robot-terminal">
+        {text && text.trim()
+          ? text
+          : "No text extracted yet — upload a CV first."}
+      </pre>
+    </div>
+  );
+}
+
+// ── The unified idle/loading checklist, right column ────────────
+function CheckList({ analysing, stepDone, jobReady, cvReady }) {
+  return (
+    <div className="ats-checks">
+      {CHECKS.map((c, i) => {
+        const done = analysing && i <= stepDone;
+        const active = analysing && i === stepDone + 1;
+        const idle = !analysing;
+        return (
+          <div
+            key={c.key}
+            className={`ats-check ${done ? "is-done" : ""} ${active ? "is-active" : ""} ${idle ? "is-idle" : ""}`}
+          >
+            <span className="ats-check-mark">
+              {done ? (
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M20 6 9 17l-5-5" />
+                </svg>
+              ) : active ? (
+                <span className="ats-check-pulse" />
+              ) : (
+                <span className="ats-check-empty" />
+              )}
+            </span>
+            <div>
+              <div className="ats-check-t">{c.label}</div>
+              <div className="ats-check-d">{c.detail}</div>
+            </div>
+          </div>
+        );
+      })}
+      {!analysing && (
+        <div className="ats-ready-row">
+          <div className={`ats-ready-pill ${jobReady ? "on" : ""}`}>
+            <span className="ats-ready-ic">{jobReady ? "✓" : "1"}</span> Job
+            description
+          </div>
+          <div className={`ats-ready-pill ${cvReady ? "on" : ""}`}>
+            <span className="ats-ready-ic">{cvReady ? "✓" : "2"}</span> Your CV
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -220,6 +355,11 @@ function Invite(props) {
     pickFile,
     error,
     analyse,
+    analysing,
+    stepDone,
+    extractedText,
+    extracting,
+    onShowRaw,
   } = props;
 
   const jobReady = jobText.trim().length > 80;
@@ -235,24 +375,24 @@ function Invite(props) {
         </h1>
         <p className="ats-sub">
           Most CVs are filtered by software before a human ever reads them.
-          Arivo checks what those systems actually look at — and shows you
+          Arivo checks what those systems actually look at, and shows you
           exactly what to fix. No fake guarantees, just the truth.
         </p>
       </header>
 
       <div className="ats-console">
-        {/* LEFT — the workbench */}
         <div className="ats-work">
-          <div className="ats-card">
+          <div className={`ats-card ${analysing ? "is-disabled" : ""}`}>
             <label className="ats-label">
               <span className="ats-step-num">1</span> Paste the job description
               {jobReady && <span className="ats-ready-tag">✓ ready</span>}
             </label>
             <textarea
               className="ats-textarea"
-              placeholder="Paste the full job posting here — responsibilities, requirements, everything. The more complete, the better we match your keywords."
+              placeholder="Paste the full job posting here, responsibilities, requirements, everything. The more complete, the better we match your keywords."
               value={jobText}
               onChange={(e) => setJobText(e.target.value)}
+              disabled={analysing}
             />
             <span className="ats-hint">
               {jobText.length} characters
@@ -260,7 +400,7 @@ function Invite(props) {
             </span>
           </div>
 
-          <div className="ats-card">
+          <div className={`ats-card ${analysing ? "is-disabled" : ""}`}>
             <label className="ats-label">
               <span className="ats-step-num">2</span> Upload your CV
               {cvReady && <span className="ats-ready-tag">✓ ready</span>}
@@ -268,12 +408,14 @@ function Invite(props) {
             <div
               className={`ats-drop ${dragOver ? "is-over" : ""} ${file ? "has-file" : ""}`}
               onDragOver={(e) => {
-                e.preventDefault();
-                setDragOver(true);
+                if (!analysing) {
+                  e.preventDefault();
+                  setDragOver(true);
+                }
               }}
               onDragLeave={() => setDragOver(false)}
-              onDrop={onDrop}
-              onClick={() => fileInput.current?.click()}
+              onDrop={(e) => !analysing && onDrop(e)}
+              onClick={() => !analysing && fileInput.current?.click()}
             >
               <input
                 ref={fileInput}
@@ -284,11 +426,12 @@ function Invite(props) {
               />
               {file ? (
                 <div className="ats-file">
-                  <div className="ats-file-ic">✓</div>
+                  <div className="ats-file-ic">{extracting ? "…" : "✓"}</div>
                   <div>
                     <div className="ats-file-name">{file.name}</div>
                     <div className="ats-file-meta">
-                      {(file.size / 1024).toFixed(0)} KB · click to replace
+                      {(file.size / 1024).toFixed(0)} KB ·{" "}
+                      {extracting ? "reading…" : "click to replace"}
                     </div>
                   </div>
                 </div>
@@ -317,143 +460,83 @@ function Invite(props) {
                 </>
               )}
             </div>
+            {extractedText && !analysing && (
+              <button className="ats-robot-link" onClick={onShowRaw}>
+                🤖 See what the robot sees →
+              </button>
+            )}
           </div>
 
           {error && <div className="ats-error">{error}</div>}
 
           <button
-            className={`ats-btn ${bothReady ? "is-ready" : ""}`}
+            className={`ats-btn ${bothReady && !analysing ? "is-ready" : ""}`}
             onClick={analyse}
+            disabled={analysing}
           >
-            {bothReady ? "Analyse my CV" : "Add both to analyse"}
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M5 12h14M13 6l6 6-6 6" />
-            </svg>
+            {analysing
+              ? "Analysing…"
+              : bothReady
+                ? "Analyse my CV"
+                : "Add both to analyse"}
+            {!analysing && (
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
+            )}
           </button>
           <span className="ats-cta-note">
             Your CV is analysed in the moment and never shared.
           </span>
         </div>
 
-        {/* RIGHT — live readiness console */}
         <aside className="ats-preview">
-          <div className="ats-preview-head">What Arivo checks</div>
-
-          <div className="ats-ready">
-            <div className={`ats-ready-pill ${jobReady ? "on" : ""}`}>
-              <span className="ats-ready-ic">{jobReady ? "✓" : "1"}</span> Job
-              description
-            </div>
-            <div className={`ats-ready-pill ${cvReady ? "on" : ""}`}>
-              <span className="ats-ready-ic">{cvReady ? "✓" : "2"}</span> Your
-              CV
-            </div>
+          <div className="ats-preview-head">
+            {analysing ? "Running the checks…" : "What Arivo checks"}
           </div>
 
-          <div className="ats-lens-hero">
-            <span className="ats-lens-hero-badge">
-              🌍 International Student Lens
-            </span>
-            <div className="ats-lens-hero-t">The check no one else runs</div>
-            <div className="ats-lens-hero-d">
-              We flag home-country CV habits — a photo, date of birth,
-              nationality, marital status — that are normal elsewhere but
-              quietly fail UK screening.
-            </div>
-          </div>
-
-          <div className="ats-checks">
-            {CHECKS.map((c) => (
-              <div className="ats-check" key={c.t}>
-                <span className="ats-check-ic">
-                  <svg
-                    width="13"
-                    height="13"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.6"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M20 6 9 17l-5-5" />
-                  </svg>
-                </span>
-                <div>
-                  <div className="ats-check-t">{c.t}</div>
-                  <div className="ats-check-d">{c.d}</div>
-                </div>
+          {!analysing && (
+            <div className="ats-lens-hero">
+              <span className="ats-lens-hero-badge">
+                🌍 International Student Lens
+              </span>
+              <div className="ats-lens-hero-t">The check no one else runs</div>
+              <div className="ats-lens-hero-d">
+                We flag home-country CV habits, a photo, date of birth, marital
+                status, that are normal elsewhere but quietly fail UK screening.
               </div>
-            ))}
-          </div>
+            </div>
+          )}
+
+          <CheckList
+            analysing={analysing}
+            stepDone={stepDone}
+            jobReady={jobReady}
+            cvReady={cvReady}
+          />
         </aside>
       </div>
     </>
   );
 }
 
-function Analysing({ stepDone }) {
-  return (
-    <div className="ats-analysing">
-      <div className="ats-pulse">
-        <div className="ats-pulse-ring" />
-        <div className="ats-pulse-core">🌍</div>
-      </div>
-      <h2 className="ats-analysing-title">
-        Reading your CV like an ATS would…
-      </h2>
-      <ul className="ats-steps">
-        {STEPS.map((s, i) => {
-          const done = i <= stepDone;
-          const active = i === stepDone + 1;
-          return (
-            <li
-              key={s}
-              className={`ats-stepline ${done ? "done" : ""} ${active ? "active" : ""}`}
-            >
-              <span className="ats-tick">
-                {done ? (
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M20 6 9 17l-5-5" />
-                  </svg>
-                ) : (
-                  <span className="ats-dot" />
-                )}
-              </span>
-              {s}
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}
-
-function Results({ result, reset, onNavigate }) {
+function Results({ result, reset, onNavigate, extractedText, onShowRaw }) {
   const {
     overall_score = 0,
     categories = [],
     missing_keywords = [],
     weak_bullets = [],
     international_lens = { status: "clear", headline: "", flags: [] },
+    recruiter_notes = "",
   } = result;
 
   const lensHasFlags =
@@ -468,14 +551,36 @@ function Results({ result, reset, onNavigate }) {
           <h2 className="ats-res-h">Your ATS Readiness</h2>
           <p className="ats-res-p">
             This is how well your CV holds up against automated screening for
-            the job you pasted. Work through the fixes below — each one lifts
+            the job you pasted. Work through the fixes below, each one lifts
             your real-world chances.
           </p>
-          <button className="ats-btn-ghost" onClick={reset}>
-            ← Analyse another CV
-          </button>
+          <div className="ats-res-btns">
+            <button className="ats-btn-ghost" onClick={reset}>
+              ← Analyse another CV
+            </button>
+            {extractedText && (
+              <button className="ats-btn-ghost" onClick={onShowRaw}>
+                🤖 See what the robot sees
+              </button>
+            )}
+          </div>
         </div>
       </div>
+
+      {recruiter_notes && (
+        <section className="ats-monologue">
+          <div className="ats-monologue-head">
+            <span className="ats-monologue-badge">
+              💭 The AI Recruiter's Simulated Notes
+            </span>
+            <span className="ats-monologue-sub">
+              A blunt first-scan impression, grounded only in your CV's craft,
+              never anything else.
+            </span>
+          </div>
+          <p className="ats-monologue-text">{recruiter_notes}</p>
+        </section>
+      )}
 
       <section className={`ats-lens ${lensHasFlags ? "has-flags" : "clear"}`}>
         <div className="ats-lens-head">
@@ -502,7 +607,7 @@ function Results({ result, reset, onNavigate }) {
           </div>
         ) : (
           <div className="ats-lens-clear">
-            Your CV follows UK conventions — no home-country formatting issues
+            Your CV follows UK conventions, no home-country formatting issues
             found.
           </div>
         )}
@@ -520,7 +625,7 @@ function Results({ result, reset, onNavigate }) {
       {missing_keywords.length > 0 && (
         <section className="ats-block">
           <h3 className="ats-section-h">
-            Keywords the job wants — missing from your CV
+            Requirements still missing, even in different words
           </h3>
           <p className="ats-block-sub">
             Weave the real ones into your experience and skills (only if they're
@@ -578,9 +683,6 @@ function Results({ result, reset, onNavigate }) {
             </div>
           </button>
         </div>
-        <p className="ats-bridge-note">
-          Use the menu above to jump to any of these.
-        </p>
       </section>
     </div>
   );
@@ -667,16 +769,15 @@ const css = `
 }
 @keyframes ats-up { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
 
-/* Hero (left-aligned, compact) */
 .ats-hero { max-width: 680px; margin: 0 0 2rem; animation: ats-up .5s ease both; }
 .ats-eyebrow { display:inline-block; font-size:11px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:#a89cf7; margin-bottom:14px; padding:5px 12px; border:1px solid ${C.borderHi}; border-radius:999px; background:rgba(124,111,239,.08); }
 .ats-title { font-size:clamp(1.9rem,3.2vw,2.4rem); line-height:1.12; font-weight:800; letter-spacing:-.03em; margin:0 0 14px; }
 .ats-sub { font-size:14.5px; line-height:1.65; color:${C.text2}; margin:0; }
 
-/* Console */
 .ats-console { display:grid; grid-template-columns:1.05fr 0.95fr; gap:18px; align-items:start; animation: ats-up .5s ease .08s both; }
 .ats-work { display:flex; flex-direction:column; gap:16px; }
-.ats-card { background:${C.panel}; border:1px solid ${C.border}; border-radius:16px; padding:20px; display:flex; flex-direction:column; }
+.ats-card { background:${C.panel}; border:1px solid ${C.border}; border-radius:16px; padding:20px; display:flex; flex-direction:column; transition:opacity .25s; }
+.ats-card.is-disabled { opacity:.5; pointer-events:none; }
 .ats-label { display:flex; align-items:center; gap:9px; font-size:14px; font-weight:700; color:${C.text}; margin-bottom:13px; }
 .ats-step-num { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:${C.grad}; color:#fff; font-size:12px; font-weight:700; flex-shrink:0; }
 .ats-ready-tag { margin-left:auto; font-size:11px; font-weight:700; color:${C.green}; background:rgba(0,212,170,.12); border:1px solid rgba(0,212,170,.3); padding:3px 10px; border-radius:999px; }
@@ -696,59 +797,56 @@ const css = `
 .ats-file-ic { width:38px; height:38px; border-radius:50%; background:rgba(0,212,170,.15); color:${C.green}; display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:700; flex-shrink:0; }
 .ats-file-name { font-size:14px; font-weight:700; color:${C.text}; word-break:break-all; }
 .ats-file-meta { font-size:12px; color:${C.text3}; margin-top:2px; }
+.ats-robot-link { margin-top:12px; align-self:flex-start; background:none; border:none; color:#a89cf7; font-size:12.5px; font-weight:600; cursor:pointer; padding:0; font-family:inherit; }
+.ats-robot-link:hover { text-decoration:underline; }
 .ats-error { background:rgba(255,122,122,.10); border:1px solid rgba(255,122,122,.35); color:${C.red}; font-size:13px; padding:11px 15px; border-radius:10px; text-align:center; }
 .ats-btn { display:inline-flex; align-items:center; justify-content:center; gap:9px; padding:14px 30px; background:${C.grad}; color:#fff; border:none; border-radius:12px; font-size:15px; font-weight:700; cursor:pointer; box-shadow:0 8px 24px rgba(124,111,239,.3); transition:filter .18s, transform .12s, box-shadow .2s; opacity:.78; }
 .ats-btn.is-ready { opacity:1; box-shadow:0 10px 30px rgba(124,111,239,.5); animation:ats-glow 2.2s ease-in-out infinite; }
+.ats-btn:disabled { cursor:not-allowed; opacity:.6; animation:none; }
 @keyframes ats-glow { 0%,100%{ box-shadow:0 10px 30px rgba(124,111,239,.4); } 50%{ box-shadow:0 10px 38px rgba(124,111,239,.65); } }
-.ats-btn:hover { filter:brightness(1.1); }
-.ats-btn:active { transform:translateY(1px); }
+.ats-btn:hover:not(:disabled) { filter:brightness(1.1); }
 .ats-cta-note { font-size:12px; color:${C.text3}; text-align:center; }
 
-/* Right console */
 .ats-preview { background:linear-gradient(160deg, rgba(124,111,239,.06), rgba(0,0,0,0)); border:1px solid ${C.border}; border-radius:18px; padding:22px; position:sticky; top:74px; }
 .ats-preview-head { font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:${C.text2}; margin-bottom:16px; }
-.ats-ready { display:flex; gap:8px; margin-bottom:18px; }
-.ats-ready-pill { flex:1; display:flex; align-items:center; gap:8px; font-size:12.5px; font-weight:600; color:${C.text3}; background:${C.inset}; border:1px solid ${C.border}; border-radius:10px; padding:9px 12px; transition:all .25s; }
-.ats-ready-pill .ats-ready-ic { width:18px; height:18px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; background:${C.panel2}; color:${C.text3}; flex-shrink:0; }
-.ats-ready-pill.on { color:${C.text}; border-color:rgba(0,212,170,.35); background:rgba(0,212,170,.07); }
-.ats-ready-pill.on .ats-ready-ic { background:${C.green}; color:#04201b; }
 
 .ats-lens-hero { background:linear-gradient(135deg, rgba(124,111,239,.16), rgba(232,121,249,.08)); border:1px solid ${C.borderHi}; border-radius:14px; padding:18px; margin-bottom:18px; }
 .ats-lens-hero-badge { display:inline-block; font-size:12px; font-weight:800; color:#fff; background:rgba(255,255,255,.08); padding:5px 11px; border-radius:999px; border:1px solid rgba(255,255,255,.1); margin-bottom:11px; }
 .ats-lens-hero-t { font-size:15px; font-weight:800; letter-spacing:-.01em; margin-bottom:6px; }
 .ats-lens-hero-d { font-size:12.5px; line-height:1.6; color:${C.text2}; }
 
-.ats-checks { display:flex; flex-direction:column; gap:3px; }
-.ats-check { display:flex; gap:11px; padding:10px; border-radius:10px; transition:background .15s; }
-.ats-check:hover { background:rgba(255,255,255,.02); }
-.ats-check-ic { width:22px; height:22px; flex-shrink:0; border-radius:50%; background:rgba(124,111,239,.12); color:#a89cf7; display:flex; align-items:center; justify-content:center; }
-.ats-check-t { font-size:13px; font-weight:700; color:${C.text}; }
-.ats-check-d { font-size:12px; color:${C.text3}; line-height:1.45; margin-top:2px; }
-
-/* Analysing */
-.ats-analysing { text-align:center; padding:40px 0 20px; max-width:460px; margin:0 auto; }
-.ats-pulse { position:relative; width:92px; height:92px; margin:0 auto 28px; }
-.ats-pulse-ring { position:absolute; inset:0; border-radius:50%; background:${C.grad}; opacity:.25; animation:ats-pulse 1.6s ease-in-out infinite; }
-.ats-pulse-core { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:38px; }
-@keyframes ats-pulse { 0%,100%{ transform:scale(.85); opacity:.25; } 50%{ transform:scale(1.15); opacity:.45; } }
-.ats-analysing-title { font-size:19px; font-weight:800; color:${C.text}; margin:0 0 28px; letter-spacing:-.02em; }
-.ats-steps { list-style:none; margin:0; padding:0; text-align:left; display:flex; flex-direction:column; gap:4px; }
-.ats-stepline { display:flex; align-items:center; gap:12px; padding:11px 14px; border-radius:10px; font-size:14px; color:${C.text3}; transition:all .3s; }
-.ats-stepline.active { color:${C.text}; background:${C.panel}; }
-.ats-stepline.done { color:${C.text2}; }
-.ats-tick { width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all .3s; }
-.ats-stepline.done .ats-tick { background:rgba(0,212,170,.15); color:${C.green}; }
-.ats-stepline:not(.done) .ats-tick { background:${C.panel2}; }
-.ats-dot { width:7px; height:7px; border-radius:50%; background:${C.text3}; }
-.ats-stepline.active .ats-dot { background:#a89cf7; animation:ats-blink 1s ease-in-out infinite; }
+.ats-checks { display:flex; flex-direction:column; gap:2px; }
+.ats-check { display:flex; gap:11px; padding:10px; border-radius:10px; transition:all .3s; }
+.ats-check.is-active { background:rgba(124,111,239,.08); }
+.ats-check-mark { width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:all .3s; margin-top:1px; }
+.ats-check.is-done .ats-check-mark { background:rgba(0,212,170,.15); color:${C.green}; }
+.ats-check.is-active .ats-check-mark, .ats-check.is-idle .ats-check-mark { background:${C.panel2}; }
+.ats-check-empty { width:7px; height:7px; border-radius:50%; background:${C.text3}; opacity:.5; }
+.ats-check-pulse { width:8px; height:8px; border-radius:50%; background:#a89cf7; animation:ats-blink 1s ease-in-out infinite; }
 @keyframes ats-blink { 50%{ opacity:.3; } }
+.ats-check-t { font-size:13.5px; font-weight:700; color:${C.text}; }
+.ats-check.is-idle .ats-check-t { color:${C.text2}; }
+.ats-check-d { font-size:12px; color:${C.text3}; line-height:1.45; margin-top:2px; }
+.ats-ready-row { display:flex; gap:8px; margin-top:14px; padding-top:14px; border-top:1px solid ${C.border}; }
+.ats-ready-pill { flex:1; display:flex; align-items:center; gap:8px; font-size:12.5px; font-weight:600; color:${C.text3}; background:${C.inset}; border:1px solid ${C.border}; border-radius:10px; padding:9px 12px; transition:all .25s; }
+.ats-ready-pill .ats-ready-ic { width:18px; height:18px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; background:${C.panel2}; color:${C.text3}; flex-shrink:0; }
+.ats-ready-pill.on { color:${C.text}; border-color:rgba(0,212,170,.35); background:rgba(0,212,170,.07); }
+.ats-ready-pill.on .ats-ready-ic { background:${C.green}; color:#04201b; }
+
+/* Robot eyes terminal */
+.ats-robot { max-width: 900px; animation: ats-up .4s ease both; }
+.ats-robot-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:18px; flex-wrap:wrap; }
+.ats-robot-title { font-size:19px; font-weight:800; color:${C.text}; margin-bottom:6px; }
+.ats-robot-sub { font-size:13px; color:${C.text2}; line-height:1.55; max-width:480px; }
+.ats-robot-terminal { background:#050508; border:1px solid rgba(0,212,170,.25); border-radius:14px; padding:22px; color:${C.green}; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; line-height:1.7; white-space:pre-wrap; word-break:break-word; max-height:70vh; overflow-y:auto; box-shadow:0 0 40px rgba(0,212,170,.06) inset; }
 
 /* Results */
-.ats-res { display:flex; flex-direction:column; gap:30px; animation: ats-up .5s ease both; }
-.ats-res-hero { display:flex; align-items:center; gap:32px; background:${C.panel}; border:1px solid ${C.border}; border-radius:20px; padding:30px 32px; }
-.ats-res-verdict { flex:1; }
+.ats-res { display:flex; flex-direction:column; gap:26px; animation: ats-up .5s ease both; }
+.ats-res-hero { display:flex; align-items:center; gap:32px; background:${C.panel}; border:1px solid ${C.border}; border-radius:20px; padding:30px 32px; flex-wrap:wrap; }
+.ats-res-verdict { flex:1; min-width:260px; }
 .ats-res-h { font-size:22px; font-weight:800; letter-spacing:-.02em; color:${C.text}; margin:0 0 8px; }
 .ats-res-p { font-size:14px; line-height:1.6; color:${C.text2}; margin:0 0 16px; }
+.ats-res-btns { display:flex; gap:10px; flex-wrap:wrap; }
 .ats-gauge { position:relative; width:150px; height:150px; flex-shrink:0; }
 .ats-gauge-svg { width:100%; height:100%; }
 .ats-gauge-track { fill:none; stroke:${C.inset}; stroke-width:11; }
@@ -757,6 +855,14 @@ const css = `
 .ats-gauge-num { font-size:34px; font-weight:800; color:${C.text}; letter-spacing:-.03em; line-height:1; }
 .ats-gauge-num span { font-size:14px; color:${C.text3}; font-weight:600; }
 .ats-gauge-label { font-size:12.5px; font-weight:700; margin-top:5px; }
+
+/* Recruiter monologue */
+.ats-monologue { background:linear-gradient(135deg, rgba(245,196,81,.08), rgba(124,111,239,.05)); border:1px solid rgba(245,196,81,.28); border-radius:18px; padding:24px 26px; }
+.ats-monologue-head { margin-bottom:14px; }
+.ats-monologue-badge { display:inline-block; font-size:13px; font-weight:800; color:${C.text}; background:rgba(255,255,255,.06); padding:6px 13px; border-radius:999px; border:1px solid ${C.border}; margin-bottom:8px; }
+.ats-monologue-sub { display:block; font-size:12px; color:${C.text3}; line-height:1.5; }
+.ats-monologue-text { font-size:14.5px; line-height:1.75; color:${C.text}; margin:0; font-style:italic; }
+
 .ats-lens { border-radius:20px; padding:26px 28px; }
 .ats-lens.has-flags { background:linear-gradient(135deg, rgba(124,111,239,.14), rgba(232,121,249,.08)); border:1px solid ${C.borderHi}; }
 .ats-lens.clear { background:rgba(0,212,170,.06); border:1px solid rgba(0,212,170,.2); }
@@ -794,7 +900,6 @@ const css = `
 .ats-bridge-ic { font-size:22px; margin-bottom:10px; }
 .ats-bridge-t { font-size:14px; font-weight:700; color:${C.text}; margin-bottom:6px; }
 .ats-bridge-d { font-size:12.5px; line-height:1.5; color:${C.text2}; }
-.ats-bridge-note { font-size:12px; color:${C.text3}; text-align:center; margin:16px 0 0; }
 .ats-btn-ghost { background:transparent; border:1px solid ${C.border}; color:${C.text2}; padding:10px 18px; border-radius:999px; cursor:pointer; font-size:13px; font-family:inherit; }
 .ats-btn-ghost:hover { color:${C.text}; border-color:${C.borderHi}; }
 
@@ -807,7 +912,7 @@ const css = `
   .ats-res-hero { flex-direction:column; text-align:center; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .ats-pulse-ring, .ats-dot, .ats-btn.is-ready { animation:none !important; }
+  .ats-btn.is-ready, .ats-check-pulse { animation:none !important; }
   .ats-gauge-prog, .ats-cat-fill { transition:none !important; }
   [class*="ats-"] { animation:none !important; }
 }
