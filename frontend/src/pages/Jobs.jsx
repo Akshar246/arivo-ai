@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 
 // ─────────────────────────────────────────────────────────────
 // JOBS PAGE · Arivo AI
 // Full-bleed master-detail: scannable list (left) + full description
-// panel (right). Palette matches the new Dashboard + Landing.
+// panel (right). Palette matches Dashboard + Landing.
+// Adds: location, industry, employment type, work-mode filters.
 // Saved roles + recent searches persist locally. No fake data.
 // ─────────────────────────────────────────────────────────────
 
@@ -51,6 +52,40 @@ const jobType = (time, type) => {
   if (t === "full_time") return "Full-time";
   if (k === "permanent") return "Permanent";
   return "";
+};
+
+const workModeLabel = (m) => {
+  if (m === "remote") return "Remote";
+  if (m === "hybrid") return "Hybrid";
+  return "On-site";
+};
+
+// How many days since we last confirmed this listing was live on
+// Adzuna. This is the honest freshness signal — not the save date,
+// since a job's real risk of being filled doesn't depend on when the
+// user bookmarked it, only on how long ago we actually checked it.
+const daysSince = (dateStr) => {
+  if (!dateStr) return null;
+  const then = new Date(dateStr);
+  if (isNaN(then)) return null;
+  return Math.floor((Date.now() - then.getTime()) / 86400000);
+};
+
+const stalenessMessage = (fetchedAt) => {
+  const days = daysSince(fetchedAt);
+  if (days === null || days < 14) return null;
+  if (days < 30) {
+    return `Listing data is ${days} days old — worth confirming it's still open before applying.`;
+  }
+  return `Listing data is over a month old — this role may have already been filled or removed. Confirm with the employer before applying.`;
+};
+
+const savedAgo = (dateStr) => {
+  const days = daysSince(dateStr);
+  if (days === null) return "";
+  if (days === 0) return "Saved today";
+  if (days === 1) return "Saved yesterday";
+  return `Saved ${days} days ago`;
 };
 
 const cleanSalary = (s) => {
@@ -176,6 +211,37 @@ const Back = () => (
     <path d="M19 12H5M11 18l-6-6 6-6" />
   </svg>
 );
+const Filter = ({ size = 15 }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M4 6h16M7 12h10M10 18h4" />
+  </svg>
+);
+const Pin = ({ size = 14 }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />
+    <circle cx="12" cy="10" r="3" />
+  </svg>
+);
 
 // ── Compact list card ─────────────────────────────────────────
 function ListCard({ job, active, saved, onSelect, onToggleSave }) {
@@ -183,6 +249,7 @@ function ListCard({ job, active, saved, onSelect, onToggleSave }) {
   const type = jobType(job.contract_time, job.contract_type);
   const salary = cleanSalary(job.salary);
   const hue = hueFor(job.company);
+  const stale = stalenessMessage(job.fetched_at);
 
   return (
     <div
@@ -233,12 +300,25 @@ function ListCard({ job, active, saved, onSelect, onToggleSave }) {
           <span className="aj-badge aj-badge--salary">{salary}</span>
         )}
         {type && <span className="aj-badge aj-badge--type">{type}</span>}
+        {job.work_mode && job.work_mode !== "onsite" && (
+          <span className="aj-badge aj-badge--mode">
+            {workModeLabel(job.work_mode)}
+          </span>
+        )}
+        {stale && (
+          <span className="aj-badge aj-badge--stale">⚠ May be filled</span>
+        )}
       </div>
-      {posted && (
-        <div className="aj-lc-posted">
-          <Clock size={11} /> {posted}
-        </div>
-      )}
+      <div className="aj-lc-posted-row">
+        {posted && (
+          <div className="aj-lc-posted">
+            <Clock size={11} /> {posted}
+          </div>
+        )}
+        {job.savedAt && (
+          <div className="aj-lc-saved">{savedAgo(job.savedAt)}</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -265,7 +345,7 @@ function Detail({ job, saved, onToggleSave, onClose }) {
   const salary = cleanSalary(job.salary);
   const hue = hueFor(job.company);
   const hasDesc = !!(job.description && job.description.trim());
-  // Split the snippet into readable paragraphs
+  const stale = stalenessMessage(job.fetched_at);
   const paras = hasDesc
     ? job.description
         .split(/\n+/)
@@ -298,7 +378,6 @@ function Detail({ job, saved, onToggleSave, onClose }) {
         </div>
       </div>
 
-      {/* Plain-English facts */}
       <div className="aj-facts">
         {salary && salary !== "Salary not specified" && (
           <div className="aj-fact">
@@ -312,6 +391,12 @@ function Detail({ job, saved, onToggleSave, onClose }) {
             <div className="aj-fact-val">{type}</div>
           </div>
         )}
+        {job.work_mode && (
+          <div className="aj-fact">
+            <div className="aj-fact-lbl">Work mode</div>
+            <div className="aj-fact-val">{workModeLabel(job.work_mode)}</div>
+          </div>
+        )}
         {posted && (
           <div className="aj-fact">
             <div className="aj-fact-lbl">Posted</div>
@@ -320,7 +405,6 @@ function Detail({ job, saved, onToggleSave, onClose }) {
         )}
       </div>
 
-      {/* Actions */}
       <div className="aj-detail-actions">
         {job.url && (
           <a
@@ -341,7 +425,19 @@ function Detail({ job, saved, onToggleSave, onClose }) {
         </button>
       </div>
 
-      {/* What sponsorship means — honest, plain-English */}
+      {job.savedAt && (
+        <div className="aj-saved-fact">
+          <Bookmark filled /> {savedAgo(job.savedAt)}
+        </div>
+      )}
+
+      {stale && (
+        <div className="aj-stale-banner">
+          <span className="aj-stale-ic">⚠</span>
+          <span>{stale}</span>
+        </div>
+      )}
+
       <div className={`aj-visa ${job.visa_sponsor ? "is-ok" : "is-unknown"}`}>
         <div className="aj-visa-ic">
           {job.visa_sponsor ? <ShieldCheck size={16} /> : "?"}
@@ -360,7 +456,13 @@ function Detail({ job, saved, onToggleSave, onClose }) {
         </div>
       </div>
 
-      {/* Description */}
+      {job.work_mode && job.work_mode !== "onsite" && (
+        <div className="aj-inferred-note">
+          Work mode is inferred from the listing text, not a guaranteed field —
+          worth confirming with the employer.
+        </div>
+      )}
+
       <div className="aj-section-h">About this role</div>
       {hasDesc ? (
         <div className="aj-desc-body">
@@ -408,9 +510,25 @@ function Jobs() {
   const [sortBy, setSortBy] = useState("match");
   const [tab, setTab] = useState("results"); // results | saved
 
+  // Filters
+  const [showFilters, setShowFilters] = useState(false);
+  const [location, setLocation] = useState("");
+  const [category, setCategory] = useState("");
+  const [categories, setCategories] = useState([]);
+  const [employmentType, setEmploymentType] = useState("any"); // any | full | part
+  const [workMode, setWorkMode] = useState("any"); // any | remote | hybrid | onsite
+
   const [savedJobs, setSavedJobs] = useState(() => readLS(SAVED_KEY, []));
   const [recent, setRecent] = useState(() => readLS(RECENT_KEY, []));
   const [selectedKey, setSelectedKey] = useState(null);
+
+  // Load the real Adzuna category list once, so Industry never guesses
+  useEffect(() => {
+    axios
+      .get(`${import.meta.env.VITE_AI_URL}/jobs/categories`)
+      .then((res) => setCategories(res.data?.categories || []))
+      .catch(() => setCategories([]));
+  }, []);
 
   const runSearch = async (term) => {
     const q = (term ?? query).trim();
@@ -425,7 +543,14 @@ function Jobs() {
     try {
       const res = await axios.post(
         `${import.meta.env.VITE_AI_URL}/jobs/search`,
-        { query: q },
+        {
+          query: q,
+          location: location.trim() || "london",
+          category: category || undefined,
+          full_time: employmentType === "full" ? true : undefined,
+          part_time: employmentType === "part" ? true : undefined,
+          work_mode: workMode === "any" ? undefined : workMode,
+        },
       );
       const list = res.data.jobs || [];
       setJobs(list);
@@ -445,7 +570,7 @@ function Jobs() {
   const toggleSave = (job) => {
     const next = isSaved(job)
       ? savedJobs.filter((s) => jobKey(s) !== jobKey(job))
-      : [job, ...savedJobs];
+      : [{ ...job, savedAt: new Date().toISOString() }, ...savedJobs];
     setSavedJobs(next);
     writeLS(SAVED_KEY, next);
   };
@@ -459,6 +584,12 @@ function Jobs() {
     setSelectedKey(null);
   };
 
+  const activeFilterCount =
+    (location.trim() ? 1 : 0) +
+    (category ? 1 : 0) +
+    (employmentType !== "any" ? 1 : 0) +
+    (workMode !== "any" ? 1 : 0);
+
   const base = tab === "saved" ? savedJobs : jobs;
   const filtered = visaOnly ? base.filter((j) => j.visa_sponsor) : base;
   const displayed =
@@ -470,7 +601,6 @@ function Jobs() {
 
   const active =
     displayed.find((j) => jobKey(j) === selectedKey) || displayed[0] || null;
-  const sponsorCount = base.filter((j) => j.visa_sponsor).length;
 
   const showSplit =
     (tab === "saved" && savedJobs.length > 0) ||
@@ -482,7 +612,6 @@ function Jobs() {
     <div className="aj">
       <style>{styles}</style>
 
-      {/* Header */}
       <header className="aj-head">
         <h1 className="aj-title">Find your next role</h1>
         <p className="aj-sub">
@@ -491,7 +620,6 @@ function Jobs() {
         </p>
       </header>
 
-      {/* Search */}
       <div className="aj-searchbar">
         <span className="aj-search-ic">
           <SearchIcon />
@@ -514,6 +642,16 @@ function Jobs() {
           </button>
         )}
         <button
+          className={`aj-filter-toggle ${showFilters ? "is-open" : ""}`}
+          onClick={() => setShowFilters((v) => !v)}
+          aria-expanded={showFilters}
+        >
+          <Filter />
+          {activeFilterCount > 0 && (
+            <span className="aj-filter-count">{activeFilterCount}</span>
+          )}
+        </button>
+        <button
           className="aj-go"
           onClick={() => runSearch()}
           disabled={loading}
@@ -523,7 +661,94 @@ function Jobs() {
         </button>
       </div>
 
-      {/* Tabs (always available once there's something to show) */}
+      {showFilters && (
+        <div className="aj-filters">
+          <div className="aj-filter-field">
+            <label className="aj-filter-label">
+              <Pin /> Location
+            </label>
+            <input
+              className="aj-filter-input"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="London"
+            />
+          </div>
+
+          <div className="aj-filter-field">
+            <label className="aj-filter-label">Industry</label>
+            <select
+              className="aj-filter-select"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+            >
+              <option value="">Every field</option>
+              {categories.map((c) => (
+                <option key={c.tag} value={c.tag}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="aj-filter-field">
+            <label className="aj-filter-label">Type</label>
+            <div className="aj-filter-seg">
+              {[
+                ["any", "Any"],
+                ["full", "Full-time"],
+                ["part", "Part-time"],
+              ].map(([v, l]) => (
+                <button
+                  key={v}
+                  className={employmentType === v ? "is-active" : ""}
+                  onClick={() => setEmploymentType(v)}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="aj-filter-field">
+            <label className="aj-filter-label">
+              Work mode
+              <span className="aj-filter-hint">inferred, not guaranteed</span>
+            </label>
+            <div className="aj-filter-seg">
+              {[
+                ["any", "Any"],
+                ["remote", "Remote"],
+                ["hybrid", "Hybrid"],
+                ["onsite", "On-site"],
+              ].map(([v, l]) => (
+                <button
+                  key={v}
+                  className={workMode === v ? "is-active" : ""}
+                  onClick={() => setWorkMode(v)}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {activeFilterCount > 0 && (
+            <button
+              className="aj-filter-reset"
+              onClick={() => {
+                setLocation("");
+                setCategory("");
+                setEmploymentType("any");
+                setWorkMode("any");
+              }}
+            >
+              Reset filters
+            </button>
+          )}
+        </div>
+      )}
+
       {(searched || savedJobs.length > 0) && (
         <div className="aj-tabs">
           <div className="aj-tabset">
@@ -574,7 +799,6 @@ function Jobs() {
         </div>
       )}
 
-      {/* Discovery (pre-search) */}
       {showDiscovery && (
         <>
           <div className="aj-props">
@@ -666,7 +890,6 @@ function Jobs() {
         </>
       )}
 
-      {/* Loading */}
       {loading && (
         <div className="aj-loadwrap" aria-live="polite">
           <p className="aj-note">
@@ -694,7 +917,6 @@ function Jobs() {
         </div>
       )}
 
-      {/* Error */}
       {error && !loading && (
         <div className="aj-state aj-state--error">
           <div className="aj-state-title">Couldn't reach the job service</div>
@@ -708,7 +930,6 @@ function Jobs() {
         </div>
       )}
 
-      {/* Empty */}
       {!loading &&
         !error &&
         ((tab === "results" && searched) || tab === "saved") &&
@@ -724,12 +945,11 @@ function Jobs() {
                 ? "Tap the bookmark on any role to keep it here for later."
                 : visaOnly
                   ? "Turn off the visa filter, or try a broader search term."
-                  : "Try a broader term — or search a related job title."}
+                  : "Try a broader term, a different location, or fewer filters."}
             </div>
           </div>
         )}
 
-      {/* Master-detail */}
       {showSplit && displayed.length > 0 && (
         <div className="aj-split">
           <div className="aj-list">
@@ -775,13 +995,11 @@ const styles = `
 }
 .aj button:focus-visible, .aj a:focus-visible, .aj [role=button]:focus-visible { outline:2px solid var(--pur); outline-offset:2px; }
 
-/* Header */
 .aj-head { margin-bottom:1.5rem; }
 .aj-title { margin:0 0 7px; font-size:clamp(1.7rem,2.6vw,2.2rem); font-weight:800; letter-spacing:-0.03em; line-height:1.1; }
 .aj-sub { margin:0; max-width:560px; font-size:13.5px; line-height:1.55; color:var(--text-2); }
 
-/* Search */
-.aj-searchbar { display:flex; align-items:center; gap:8px; max-width:760px; background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:6px 6px 6px 16px; transition:border-color .2s, box-shadow .2s; }
+.aj-searchbar { display:flex; align-items:center; gap:8px; max-width:820px; background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:6px 6px 6px 16px; transition:border-color .2s, box-shadow .2s; }
 .aj-searchbar:focus-within { border-color:var(--pur); box-shadow:0 0 0 4px rgba(124,111,239,.15); }
 .aj-search-ic { display:flex; color:var(--text-3); transition:color .2s; }
 .aj-searchbar:focus-within .aj-search-ic { color:var(--pur); }
@@ -789,12 +1007,31 @@ const styles = `
 .aj-input::placeholder { color:#5a5a72; }
 .aj-clear { display:flex; align-items:center; justify-content:center; width:30px; height:30px; border:none; background:transparent; color:var(--text-3); cursor:pointer; border-radius:8px; transition:all .15s; }
 .aj-clear:hover { color:var(--text); background:rgba(255,255,255,.06); }
+.aj-filter-toggle { position:relative; display:flex; align-items:center; justify-content:center; width:38px; height:38px; flex-shrink:0; border-radius:10px; border:1px solid var(--border); background:transparent; color:var(--text-2); cursor:pointer; transition:all .18s; }
+.aj-filter-toggle:hover, .aj-filter-toggle.is-open { color:var(--text); border-color:var(--border-hi); background:rgba(124,111,239,.08); }
+.aj-filter-count { position:absolute; top:-5px; right:-5px; width:16px; height:16px; border-radius:50%; background:var(--pur); color:#fff; font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center; }
 .aj-go { flex-shrink:0; padding:10px 22px; border:none; border-radius:10px; background:linear-gradient(135deg,var(--pur),var(--pur2)); color:#fff; font-size:13.5px; font-weight:700; cursor:pointer; transition:filter .18s, transform .12s; }
 .aj-go:hover:not(:disabled) { filter:brightness(1.12); }
 .aj-go:active:not(:disabled) { transform:scale(.97); }
 .aj-go:disabled { opacity:.6; cursor:not-allowed; }
 
-/* Tabs */
+/* Filters panel */
+.aj-filters { display:flex; flex-wrap:wrap; align-items:flex-end; gap:14px; max-width:820px; margin-top:12px; padding:16px; background:var(--panel); border:1px solid var(--border); border-radius:14px; animation:aj-open .18s ease; }
+.aj-filter-field { display:flex; flex-direction:column; gap:6px; min-width:130px; }
+.aj-filter-label { display:flex; align-items:center; gap:5px; font-size:11.5px; font-weight:600; color:var(--text-2); }
+.aj-filter-hint { font-size:10px; font-weight:500; color:var(--text-3); font-style:italic; }
+.aj-filter-input { padding:8px 12px; border-radius:9px; background:rgba(0,0,0,0.2); border:1px solid var(--border); color:var(--text); font-size:13px; outline:none; font-family:inherit; }
+.aj-filter-input:focus { border-color:var(--pur); }
+.aj-filter-select { padding:8px 12px; border-radius:9px; background:rgba(0,0,0,0.2); border:1px solid var(--border); color:var(--text); font-size:13px; outline:none; font-family:inherit; cursor:pointer; max-width:180px; }
+.aj-filter-select:focus { border-color:var(--pur); }
+.aj-filter-seg { display:inline-flex; background:rgba(0,0,0,0.2); border:1px solid var(--border); border-radius:9px; padding:3px; }
+.aj-filter-seg button { padding:6px 10px; border:none; background:transparent; color:var(--text-2); font-size:12px; font-weight:600; border-radius:6px; cursor:pointer; transition:all .15s; white-space:nowrap; }
+.aj-filter-seg button:hover { color:var(--text); }
+.aj-filter-seg button.is-active { background:rgba(124,111,239,.22); color:var(--text); }
+.aj-filter-reset { align-self:center; margin-left:auto; padding:8px 14px; border:1px solid var(--border); background:transparent; color:var(--text-3); font-size:12px; border-radius:9px; cursor:pointer; transition:all .15s; }
+.aj-filter-reset:hover { color:var(--text); border-color:var(--border-hi); }
+@keyframes aj-open { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
+
 .aj-tabs { display:flex; align-items:center; justify-content:space-between; gap:14px; margin:1.5rem 0 1.25rem; flex-wrap:wrap; }
 .aj-tabset { display:inline-flex; background:var(--panel); border:1px solid var(--border); border-radius:11px; padding:4px; }
 .aj-tabset button { padding:8px 16px; border:none; background:transparent; color:var(--text-2); font-size:13px; font-weight:600; border-radius:8px; cursor:pointer; transition:all .15s; }
@@ -809,7 +1046,6 @@ const styles = `
 .aj-toggle:hover { background:rgba(0,212,170,.10); }
 .aj-toggle.is-on { background:var(--verify); color:#04201b; border-color:transparent; }
 
-/* Value props */
 .aj-props { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:1.75rem; max-width:960px; }
 .aj-prop { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:20px; transition:border-color .18s, transform .18s; }
 .aj-prop:hover { border-color:var(--border-hi); transform:translateY(-2px); }
@@ -817,7 +1053,6 @@ const styles = `
 .aj-prop-title { font-size:14px; font-weight:700; margin-bottom:5px; }
 .aj-prop-sub { font-size:12px; color:var(--text-3); line-height:1.5; }
 
-/* Blocks + chips */
 .aj-block { margin-top:1.75rem; max-width:960px; }
 .aj-block-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:11px; }
 .aj-eyebrow { font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--text-3); }
@@ -827,11 +1062,9 @@ const styles = `
 .aj-chip { padding:8px 15px; border-radius:999px; cursor:pointer; background:transparent; border:1px solid var(--border); color:var(--text-2); font-size:12.5px; transition:all .16s; }
 .aj-chip:hover { border-color:var(--border-hi); color:var(--text); background:rgba(124,111,239,.08); transform:translateY(-1px); }
 
-/* Master-detail split */
 .aj-split { display:grid; grid-template-columns:minmax(340px, 420px) 1fr; gap:16px; align-items:start; }
 .aj-list { display:flex; flex-direction:column; gap:10px; }
 
-/* List card */
 .aj-lc { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:16px; cursor:pointer; transition:all .18s; }
 .aj-lc:hover { border-color:var(--border-hi); background:var(--panel-2); }
 .aj-lc.is-active { border-color:var(--pur); background:rgba(124,111,239,.08); box-shadow:0 0 0 1px var(--pur) inset; }
@@ -848,9 +1081,12 @@ const styles = `
 .aj-badge--verified { background:rgba(0,212,170,.14); color:var(--verify); border:1px solid rgba(0,212,170,.4); }
 .aj-badge--salary { background:rgba(124,111,239,.14); color:#a89cf7; border:1px solid rgba(124,111,239,.3); }
 .aj-badge--type { background:rgba(255,255,255,.05); color:var(--text-2); border:1px solid rgba(255,255,255,.1); }
-.aj-lc-posted { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--text-3); margin-top:10px; }
+.aj-badge--mode { background:rgba(245,196,81,.12); color:var(--gold); border:1px solid rgba(245,196,81,.3); }
+.aj-badge--stale { background:rgba(245,196,81,.1); color:var(--gold); border:1px solid rgba(245,196,81,.3); }
+.aj-lc-posted-row { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:10px; }
+.aj-lc-posted { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--text-3); }
+.aj-lc-saved { font-size:11px; color:var(--text-3); }
 
-/* Detail panel */
 .aj-detail { position:sticky; top:74px; background:var(--panel); border:1px solid var(--border); border-radius:18px; min-height:400px; }
 .aj-detail-inner { padding:28px; }
 .aj-detail-back { display:none; align-items:center; gap:7px; border:none; background:none; color:var(--text-2); font-size:13px; font-weight:600; cursor:pointer; margin-bottom:16px; padding:0; }
@@ -872,8 +1108,10 @@ const styles = `
 .aj-save:hover { color:var(--text); border-color:var(--border-hi); }
 .aj-save.is-saved { color:var(--pur); border-color:var(--border-hi); background:rgba(124,111,239,.1); }
 
-/* Visa explainer */
-.aj-visa { display:flex; gap:13px; padding:16px 18px; border-radius:14px; margin-bottom:24px; }
+.aj-saved-fact { display:flex; align-items:center; gap:7px; font-size:12px; color:var(--text-3); margin-bottom:14px; }
+.aj-stale-banner { display:flex; align-items:flex-start; gap:10px; padding:12px 16px; border-radius:12px; background:rgba(245,196,81,.08); border:1px solid rgba(245,196,81,.28); color:var(--gold); font-size:12.5px; line-height:1.55; margin-bottom:16px; }
+.aj-stale-ic { flex-shrink:0; }
+.aj-visa { display:flex; gap:13px; padding:16px 18px; border-radius:14px; margin-bottom:16px; }
 .aj-visa.is-ok { background:rgba(0,212,170,.07); border:1px solid rgba(0,212,170,.25); }
 .aj-visa.is-unknown { background:rgba(255,255,255,.025); border:1px solid var(--border); }
 .aj-visa-ic { width:30px; height:30px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-weight:800; }
@@ -881,6 +1119,7 @@ const styles = `
 .aj-visa.is-unknown .aj-visa-ic { background:rgba(255,255,255,.06); color:var(--text-3); }
 .aj-visa-t { font-size:14px; font-weight:700; color:var(--text); margin-bottom:4px; }
 .aj-visa-s { font-size:12.5px; color:var(--text-2); line-height:1.6; }
+.aj-inferred-note { font-size:11.5px; color:var(--text-3); font-style:italic; margin-bottom:20px; }
 
 .aj-section-h { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-2); margin-bottom:12px; }
 .aj-desc-body p { font-size:13.5px; line-height:1.75; color:var(--text-2); margin:0 0 14px; }
@@ -888,13 +1127,11 @@ const styles = `
 .aj-desc-link { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:700; color:var(--pur); text-decoration:none; margin-top:4px; }
 .aj-desc-link:hover { text-decoration:underline; }
 
-/* Empty detail */
 .aj-detail-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:60px 30px; min-height:400px; }
 .aj-detail-empty-ic { font-size:40px; margin-bottom:16px; opacity:0.5; }
 .aj-detail-empty-t { font-size:15px; font-weight:700; color:var(--text); margin-bottom:8px; }
 .aj-detail-empty-s { font-size:13px; color:var(--text-3); line-height:1.6; max-width:320px; }
 
-/* States */
 .aj-state { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:32px; text-align:center; margin-top:1rem; max-width:560px; }
 .aj-state--error { border-color:rgba(244,99,99,.25); }
 .aj-state-title { font-size:15px; font-weight:700; color:var(--text); margin-bottom:6px; }
@@ -903,15 +1140,12 @@ const styles = `
 .aj-retry:hover { filter:brightness(1.12); }
 .aj-end { text-align:center; font-size:11.5px; color:var(--text-3); padding:14px 0 4px; }
 
-/* Skeleton */
-.aj-skel-list { display:grid; grid-template-columns:minmax(340px,420px) 1fr; gap:16px; align-items:start; }
-.aj-skel-list { grid-template-columns:1fr; max-width:420px; }
+.aj-skel-list { display:grid; grid-template-columns:1fr; max-width:420px; gap:10px; }
 .aj-lc--skel { pointer-events:none; }
 .aj-skel { background:linear-gradient(90deg,#13131f 25%,#1e1e2e 50%,#13131f 75%); background-size:200% 100%; animation:aj-shimmer 1.4s ease-in-out infinite; border-radius:6px; }
 .aj-skel-logo { width:42px; height:42px; border-radius:11px; }
 @keyframes aj-shimmer { 0% { background-position:200% 0; } 100% { background-position:-200% 0; } }
 
-/* Responsive — collapse to list + overlay detail */
 @media (max-width:960px) {
   .aj-split { grid-template-columns:1fr; }
   .aj-detail {
@@ -926,6 +1160,8 @@ const styles = `
 @media (max-width:600px) {
   .aj { padding:1.5rem 1.1rem 3rem; }
   .aj-props { grid-template-columns:1fr; }
+  .aj-filters { flex-direction:column; align-items:stretch; }
+  .aj-filter-reset { margin-left:0; }
 }
 `;
 

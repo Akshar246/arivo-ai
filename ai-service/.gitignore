@@ -1,0 +1,5 @@
+arivo_db/
+*.pkl
+__pycache__/
+*.pyc
+.env
