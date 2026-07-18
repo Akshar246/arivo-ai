@@ -92,50 +92,56 @@ sponsors_cache_date = None
 def load_sponsors_quick():
     global sponsors_cache, sponsors_cache_date
 
-    # If we already loaded today — use cached version
-    # No need to download 9MB again
     if sponsors_cache and sponsors_cache_date == datetime.now().strftime("%Y-%m-%d"):
         return sponsors_cache
 
     try:
         print("Loading Home Office sponsor list...")
 
-        # Fetch the GOV.UK page to find the current CSV link
-        # The link changes every month so we find it dynamically
         govuk_page = http_requests.get(
             "https://www.gov.uk/government/publications/register-of-licensed-sponsors-workers"
         )
 
-        # Use regex to extract the CSV download URL from the page
-        pattern = r'https://assets\.publishing\.service\.gov\.uk/media/[^"]+Worker_and_Temporary_Worker\.csv'
+        # Fixed: the government renamed the CSV to include a
+        # "_Web_Register_-_YYYY-MM-DD" suffix. The old regex required
+        # the filename to end exactly in "Worker_and_Temporary_Worker.csv",
+        # which no longer matches — every load was silently failing and
+        # returning an empty sponsor set. This now matches any .csv asset
+        # on the page instead of a rigid filename, so future renames
+        # don't quietly break this again.
+        pattern = r'https://assets\.publishing\.service\.gov\.uk/media/[^"]+\.csv'
         matches = re.findall(pattern, govuk_page.text)
 
         if not matches:
-            print("Could not find CSV URL")
-            return set()
+            print("Could not find CSV URL — keeping previous cache if any")
+            return sponsors_cache or set()
 
-        # Download the CSV file
         csv_response = http_requests.get(matches[0])
         sponsors = set()
         content = csv_response.content.decode("utf-8", errors="ignore")
         reader = csv.DictReader(io.StringIO(content))
 
-        # Extract all company names into a set
-        # A set gives us O(1) lookup speed — very fast
         for row in reader:
             org_name = row.get("Organisation Name", "").strip().lower()
             if org_name:
                 sponsors.add(org_name)
 
-        # Save to cache with today's date
+        # Sanity check — the real register has 120,000+ entries. If
+        # parsing produced far fewer, the column name or format
+        # probably changed too. Don't let a broken parse silently
+        # replace a good cache with an almost-empty one.
+        if len(sponsors) < 10000:
+            print(f"Suspiciously low sponsor count ({len(sponsors)}) — keeping previous cache")
+            return sponsors_cache or set()
+
         sponsors_cache = sponsors
         sponsors_cache_date = datetime.now().strftime("%Y-%m-%d")
         print(f"Loaded {len(sponsors):,} official sponsors")
         return sponsors
 
     except Exception as e:
-        print(f"Sponsor load error: {e}")
-        return set()
+        print(f"Sponsor load error: {e} — keeping previous cache if any")
+        return sponsors_cache or set()
 
 
 # ─────────────────────────────────────────────
@@ -170,7 +176,7 @@ def is_sponsor(company_name, sponsors_set):
 # Fetches real current jobs for ANY role or field
 # Checks each job against Home Office data
 # ─────────────────────────────────────────────
-def fetch_live_jobs(query, max_results=10):
+def fetch_live_jobs(query, max_results=10, location="london", full_time=None, part_time=None, category=None):
     try:
         app_id = os.getenv("ADZUNA_APP_ID")
         api_key = os.getenv("ADZUNA_API_KEY")
@@ -181,9 +187,15 @@ def fetch_live_jobs(query, max_results=10):
             "app_key": api_key,
             "results_per_page": max_results,
             "what": query,  # the clean job role search term
-            "where": "london",  # always London for now
+            "where": location or "london",
             "content-type": "application/json",
         }
+        if full_time:
+            params["full_time"] = 1
+        if part_time:
+            params["part_time"] = 1
+        if category:
+            params["category"] = category
 
         response = http_requests.get(url, params=params)
 
@@ -200,7 +212,7 @@ def fetch_live_jobs(query, max_results=10):
         for job in jobs:
             company = job.get("company", {}).get("display_name", "Unknown")
             title = job.get("title", "Unknown")
-            location = job.get("location", {}).get("display_name", "London")
+            job_location = job.get("location", {}).get("display_name", location or "London")
             salary_min = job.get("salary_min", 0)
             salary_max = job.get("salary_max", 0)
             description = job.get("description", "")[:300]
@@ -221,15 +233,24 @@ def fetch_live_jobs(query, max_results=10):
             else:
                 salary = "Salary not specified"
 
+            # Infer remote/hybrid/on-site from title + description.
+            # Adzuna has no native field for this — best-effort keyword
+            # match, not a guaranteed signal, labelled as such in the UI.
+            blob = f"{title} {description}".lower()
+            if "hybrid" in blob:
+                work_mode = "hybrid"
+            elif "remote" in blob or "work from home" in blob or "wfh" in blob:
+                work_mode = "remote"
+            else:
+                work_mode = "onsite"
+
             # Create a Document for ChromaDB storage
-            # page_content is what gets converted to vectors and searched
-            # metadata is extra info we store alongside it
             doc = Document(
-                page_content=f"{company} | {title} | {location} | {salary} | {'Official Tier 2 Visa Sponsor' if visa_sponsor else 'Sponsorship not confirmed'} | {description}",
+                page_content=f"{company} | {title} | {job_location} | {salary} | {'Official Tier 2 Visa Sponsor' if visa_sponsor else 'Sponsorship not confirmed'} | {description}",
                 metadata={
                     "company": company,
                     "title": title,
-                    "location": location,
+                    "location": job_location,
                     "salary": salary,
                     "visa_sponsor": visa_sponsor,
                     "url": job_url,
@@ -239,11 +260,12 @@ def fetch_live_jobs(query, max_results=10):
                     "created": created,
                     "contract_time": contract_time,
                     "contract_type": contract_type,
+                    "work_mode": work_mode,
                 },
             )
             documents.append(doc)
 
-        print(f"Fetched {len(documents)} live jobs from Adzuna for: {query}")
+        print(f"Fetched {len(documents)} live jobs from Adzuna for: {query} (location={location})")
         return documents
 
     except Exception as e:
@@ -262,16 +284,12 @@ def fetch_live_jobs(query, max_results=10):
 # Step 4 — Store new results for next time
 # Step 5 — Return the best results
 # ─────────────────────────────────────────────
-def hybrid_job_search(query, k=5):
+def hybrid_job_search(query, k=5, location="london", full_time=None, part_time=None, category=None):
 
     # Step 1 — Search ChromaDB with SCORES
-    # similarity_search_with_score returns (document, score)
-    # Lower score = more similar = more relevant
-    # Score above 1.0 means the result is not relevant
     results_with_scores = vectorstore.similarity_search_with_score(query, k=k)
 
     # Only keep results that are actually relevant
-    # Score threshold of 1.0 — anything above is irrelevant
     fresh_results = []
     cutoff_date = datetime.now() - timedelta(days=30)
 
@@ -281,6 +299,14 @@ def hybrid_job_search(query, k=5):
             print(
                 f"Skipping irrelevant result (score: {score:.2f}): {doc.metadata.get('title', '')}"
             )
+            continue
+
+        # Only count actual job documents toward "we have enough
+        # results" — anything without company metadata isn't a real
+        # job listing (e.g. general RAG chat knowledge sharing this
+        # same vector store), and was silently blocking the live
+        # Adzuna fallback for fields it had nothing real to offer.
+        if not doc.metadata.get("company"):
             continue
 
         # Check job is not expired
@@ -317,7 +343,13 @@ Job role:"""
         clean_query = llm.invoke(extraction_prompt).content.strip()
         print(f"Extracted search term: {clean_query}")
 
-        live_jobs = fetch_live_jobs(clean_query)
+        live_jobs = fetch_live_jobs(
+            clean_query,
+            location=location,
+            full_time=full_time,
+            part_time=part_time,
+            category=category,
+        )
 
         if live_jobs:
             vectorstore.add_documents(live_jobs)
@@ -336,6 +368,7 @@ Job role:"""
 class ChatRequest(BaseModel):
     message: str
     session_id: str = "default"  # default session if not provided
+    mode: str = "general" 
 
 
 class SkillGapRequest(BaseModel):
@@ -371,45 +404,86 @@ def chat(request: ChatRequest):
 
     history = sessions[request.session_id]
 
-    # Step 1 — Hybrid search for relevant jobs
-    # ChromaDB first, Adzuna live if needed
-    relevant_docs = hybrid_job_search(request.message, k=5)
+    # Dynamic Prompts based on User Module Selection
+    system_prompts = {
+        "general": """You are Arivo, an elite AI career coach for international students in the UK. 
+Use the provided job listings to answer. Do not make up jobs. Be direct, confident, and highly strategic.""",
+        
+        "localizer": """You are a top-tier UK tech recruiter and 'Prestige Translator'. 
+The user is providing their home-country experience. 
+Your job: 
+1. Translate the prestige of their foreign companies to UK equivalents (e.g., if they say HDFC Bank, say "That is India's largest private bank, equivalent to Barclays UK"). 
+2. Rewrite their bullet points to be quantifiable, highly confident, and culturally aligned with London's corporate scene. Remove all passive/deferential language.""",
+        
+        "visa": """You are a ruthless but highly strategic UK Immigration Advisor. 
+Look at the SYSTEM ALERTS in the context below regarding the company's sponsor status. 
+If they ARE a sponsor: Give the user a confident, non-desperate script on exactly when and how to ask for the Skilled Worker Visa (e.g., wait until the end of the HR screen). 
+If they ARE NOT a sponsor: Tell them bluntly NOT to waste their time interviewing. Do not give generic advice. Give tactical, script-based advice.""",
+        
+        "interview": """You are a strict hiring manager at a top UK company. The user wants to practice an interview. 
+Ask them ONE tough technical or behavioral question based on their message. Wait for them to answer. 
+Grade their answer out of 10 based on the STAR method, give a quick blunt critique, and ask the next question.""",
+        
+        "tone": """You are an expert in UK Corporate Culture and Communications. 
+The user will provide an email, cover letter, or interview answer. 
+Analyze it for: 1) Overly deferential/subservient language ("Respected Sir", "Kindly", "Do the needful"). 2) Passive voice. 3) Lack of directness. 
+Rewrite the text to be polite, confident, and direct—the standard for the UK market. Explain exactly what you changed and why."""
+    }
 
-    # Join all job listings into one context string
-    # This gets injected into the prompt for the LLM
-    context = "\n".join([doc.page_content for doc in relevant_docs])
+    selected_prompt = system_prompts.get(request.mode, system_prompts["general"])
+    context_data = ""
 
-    # Step 2 — Build the prompt with real job data
-    # The LLM can only answer from what we give it here
-    # This prevents hallucination — no making up jobs
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                """You are Arivo, an AI career coach helping
-students navigate the UK job market.
+    # THE VISA INTERCEPTOR: Automatically check the DB if using the Visa mode
+    if request.mode == "visa":
+        extract_prompt = f"""Extract ALL company names the user is asking about in this message.
+Return ONLY a valid JSON list of strings. If no companies are mentioned, return an empty list [].
+Do not include any other text.
+Message: {request.message}"""
+        
+        try:
+            raw_companies = llm.invoke(extract_prompt).content.strip()
+            if raw_companies.startswith("```"):
+                raw_companies = raw_companies.split("```")[1]
+                if raw_companies.startswith("json"):
+                    raw_companies = raw_companies[4:]
+            
+            companies = json.loads(raw_companies)
+            
+            if companies and len(companies) > 0:
+                sponsors = load_sponsors_quick()
+                alerts = []
+                for comp in companies:
+                    is_sponsored = is_sponsor(comp, sponsors)
+                    if is_sponsored:
+                        alerts.append(f"- '{comp}' IS AN ACTIVE A-RATED SPONSOR. Tell the user this is confirmed.")
+                    else:
+                        alerts.append(f"- '{comp}' IS NOT ON THE SPONSOR REGISTER. Warn the user heavily.")
+                
+                context_data = "\n\nSYSTEM ALERTS FROM HOME OFFICE DB:\n" + "\n".join(alerts)
+        except Exception as e:
+            print(f"Visa extraction error: {e}")
+            pass # Fallback to standard prompt if extraction fails
 
-Use the following REAL job listings to answer the user's question.
-Only recommend jobs from this list — do not make up jobs.
+    # Standard job fallback for general mode
+    elif request.mode == "general":
+        relevant_docs = hybrid_job_search(request.message, k=5)
+        context_data = "\n\nReal UK Job Listings Context:\n" + "\n".join([doc.page_content for doc in relevant_docs])
 
-Real job listings:
-{context}
+    final_system_prompt = selected_prompt + context_data
 
-If the question is not about jobs, answer from your general knowledge.""",
-            ),
-            MessagesPlaceholder(variable_name="history"),
-            ("human", "{input}"),
-        ]
-    )
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", final_system_prompt),
+        MessagesPlaceholder(variable_name="history"),
+        ("human", "{input}"),
+    ])
 
     chain = prompt | llm | StrOutputParser()
 
     response = chain.invoke(
-        {"context": context, "history": history, "input": request.message}
+        {"history": history, "input": request.message}
     )
 
-    # Step 3 — Save this exchange to memory
-    # Next message will include this conversation history
+    # Save this exchange to memory
     history.append(HumanMessage(content=request.message))
     history.append(AIMessage(content=response))
 
@@ -657,14 +731,67 @@ Job description:
     if not keywords:
         return 20, "pass", "No specific keywords to match.", []
 
-    # Match each keyword against the CV (partial, like skill-gap)
+    # Step 1 — cheap exact/substring match. Still correct for concrete
+    # named tools — "python" either appears or it doesn't, no need to
+    # spend an LLM call on that.
     present = [k for k in keywords if k in cv_low]
-    missing = [k for k in keywords if k not in cv_low]
-    ratio = len(present) / len(keywords)
-    score = round(ratio * 20)
-    status = "pass" if ratio >= 0.7 else "warn" if ratio >= 0.4 else "fail"
-    msg = f"Your CV includes {len(present)} of {len(keywords)} key skills the job asks for."
-    return score, status, msg, missing[:12]
+    missing_raw = [k for k in keywords if k not in cv_low]
+
+    # Step 2 — semantic rescue, ONLY on what exact-matching missed.
+    # A CV saying "managed 5 direct reports" genuinely satisfies a JD
+    # asking for "led a team" — that's the same experience in different
+    # words, not a real gap. Exact-string matching alone would wrongly
+    # penalise a well-written CV for phrasing, which this app refuses
+    # to do. Runs on the leftover set only, so most keywords still
+    # resolve instantly via the cheap check above.
+    missing = missing_raw
+    if missing_raw:
+        rescue_prompt = f"""A candidate's CV is being checked against a list of
+job requirements. Some requirements didn't appear as exact text in the CV,
+but the CV might express the same skill or responsibility in different words.
+
+For each requirement below, check the CV text and decide: does the CV
+genuinely demonstrate this, just phrased differently? Only say yes if it's
+a real match in substance, not a stretch. Being strict matters — this app
+never inflates a score.
+
+Requirements to check: {json.dumps(missing_raw)}
+
+CV text:
+{cv[:3000]}
+
+Return ONLY a JSON object mapping each requirement (exact string from the
+list) to true or false. Example: {{"led a team": true, "kubernetes": false}}
+No explanation, just the JSON object."""
+
+        try:
+            raw = llm.invoke(rescue_prompt).content.strip()
+            if raw.startswith("```"):
+                raw = raw.split("```")[1]
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            verdicts = json.loads(raw)
+            missing = [k for k in missing_raw if not verdicts.get(k, False)]
+            present = present + [k for k in missing_raw if verdicts.get(k, False)]
+        except:
+            # Rescue call failed for any reason — fall back to the exact
+            # match result rather than guessing. Never silently invent a pass.
+            missing = missing_raw
+
+    match_ratio = len(present) / len(keywords)
+    score = round(match_ratio * 20)
+
+    if match_ratio >= 0.75:
+        status = "pass"
+        msg = f"Strong match — {len(present)} of {len(keywords)} requirements found, including skills expressed in different words."
+    elif match_ratio >= 0.45:
+        status = "warn"
+        msg = f"Partial match — {len(present)} of {len(keywords)} requirements found. Real gaps below, not just phrasing."
+    else:
+        status = "fail"
+        msg = f"Weak match — only {len(present)} of {len(keywords)} requirements found. Worth reviewing whether this role is the right target."
+
+    return score, status, msg, missing
 
 
 # ── CHECK 5: Formatting red flags ────────────
@@ -798,6 +925,50 @@ def check_international_lens(cv):
         "flags": flags
     }
 
+def generate_recruiter_notes(cv, jd, overall_score, missing_keywords, weak_bullets):
+    # ─────────────────────────────────────────────
+    # THE RECRUITER'S SIMULATED NOTES
+    # Blunt, realistic first-scan impressions, grounded only in
+    # legitimate resume-craft signals: dates/gaps, how clearly scale
+    # and impact are quantified, generic vs specific phrasing, and how
+    # directly the CV maps to the actual role. Explicitly never touches
+    # anything protected-characteristic-adjacent — that's not what a
+    # recruiter is legally or ethically evaluating, and it's not what
+    # this feature is for.
+    # ─────────────────────────────────────────────
+    prompt = f"""You are a blunt, experienced tech recruiter who has screened
+thousands of CVs. Write quick, honest internal notes after a 20-second scan
+of this CV against a specific job — the kind of notes a recruiter jots to
+themselves, not a polished summary for the candidate.
+
+Base your notes ONLY on legitimate resume-craft signals: employment date
+gaps or frequent short stints (perceived job-hopping), how clearly scale
+and impact are quantified ("led a team" vs "led a team of 12, cut delivery
+time 30%"), whether bullets read as generic/boilerplate vs specific, and
+how directly the CV's experience maps to what this role actually asks for.
+
+Never comment on name, age, gender, ethnicity, nationality, accent, photo,
+or any protected characteristic — only on the craft and content of the
+document itself, exactly how a professional recruiter should evaluate it.
+
+Write 3-5 sentences, first-person, as if thinking out loud. Be direct,
+including real criticism if warranted, but not needlessly harsh.
+
+CV:
+{cv[:2500]}
+
+Job description:
+{jd[:1500]}
+
+Current ATS score: {overall_score}/100
+Missing requirements: {", ".join(missing_keywords[:5]) if missing_keywords else "none major"}
+"""
+    try:
+        return llm.invoke(prompt).content.strip()
+    except Exception as e:
+        print(f"Recruiter notes error: {e}")
+        return "Couldn't generate recruiter notes this time — try analysing again."
+
 @app.post("/ats/analyse")
 def ats_analyse(request: ATSRequest):
     cv = request.cv_text
@@ -834,6 +1005,38 @@ def ats_analyse(request: ATSRequest):
     }
 
 
+@app.get("/jobs/categories")
+def get_job_categories():
+    # ─────────────────────────────────────────────
+    # Returns Adzuna's real, current category list so
+    # the frontend Industry dropdown always matches valid
+    # values — never a hardcoded guess that can silently
+    # go stale and return zero results with no error.
+    # ─────────────────────────────────────────────
+    try:
+        app_id = os.getenv("ADZUNA_APP_ID")
+        api_key = os.getenv("ADZUNA_API_KEY")
+        url = "https://api.adzuna.com/v1/api/jobs/gb/categories"
+        params = {
+            "app_id": app_id,
+            "app_key": api_key,
+            "content-type": "application/json",
+        }
+        response = http_requests.get(url, params=params)
+        if response.status_code != 200:
+            return {"categories": []}
+        raw = response.json().get("results", [])
+        categories = [
+            {"tag": c.get("tag", ""), "label": c.get("label", "")}
+            for c in raw
+            if c.get("tag")
+        ]
+        return {"categories": categories}
+    except Exception as e:
+        print(f"Categories fetch error: {e}")
+        return {"categories": []}
+
+
 @app.post("/jobs/search")
 def search_jobs(request: dict):
     # ─────────────────────────────────────────────
@@ -842,16 +1045,30 @@ def search_jobs(request: dict):
     # Frontend can display clean job cards from this
     # Uses hybrid search — ChromaDB first, Adzuna live fallback
     # Works for every role in every field
+    # Supports location, industry, employment type, and an
+    # inferred remote/hybrid/on-site filter
     # ─────────────────────────────────────────────
     query = request.get("query", "")
     if not query:
         return {"jobs": [], "count": 0}
 
-    # Run hybrid search with the query
-    docs = hybrid_job_search(query, k=10)
+    location = request.get("location") or "london"
+    full_time = request.get("full_time")
+    part_time = request.get("part_time")
+    category = request.get("category") or None
+    work_mode = request.get("work_mode") or None  # "remote" | "hybrid" | "onsite"
+
+    # Run hybrid search with the query and filters
+    docs = hybrid_job_search(
+        query,
+        k=10,
+        location=location,
+        full_time=full_time,
+        part_time=part_time,
+        category=category,
+    )
 
     # Convert documents to structured job objects
-    # Frontend can map over these easily
     jobs = []
     for doc in docs:
         jobs.append(
@@ -868,6 +1085,9 @@ def search_jobs(request: dict):
                 "created": doc.metadata.get("created", ""),
                 "contract_time": doc.metadata.get("contract_time", ""),
                 "contract_type": doc.metadata.get("contract_type", ""),
+                # Older cached docs won't have this — defaults to
+                # "onsite" rather than crashing or showing blank.
+                "work_mode": doc.metadata.get("work_mode", "onsite"),
             }
         )
 
@@ -879,6 +1099,11 @@ def search_jobs(request: dict):
         if key not in seen:
             seen.add(key)
             unique_jobs.append(job)
+
+    # Post-filter by inferred work mode. Applied here rather than sent
+    # to Adzuna, since Adzuna has no native remote/hybrid field.
+    if work_mode in ("remote", "hybrid", "onsite"):
+        unique_jobs = [j for j in unique_jobs if j.get("work_mode") == work_mode]
 
     print(f"Job search for '{query}' returned {len(unique_jobs)} unique results")
 

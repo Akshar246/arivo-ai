@@ -84,6 +84,7 @@ services:
       - ./ai-service/.env # loads GROQ_API_KEY, ADZUNA keys etc
     environment:
       PYTHONUNBUFFERED: 1 # ensures Python logs appear in real time
+      PORT: "8000" # matches the host:container port mapping above
     volumes:
       # ChromaDB data persists across container restarts.
       # Without this volume, every deploy wipes your job database
@@ -96,31 +97,8 @@ services:
     restart: unless-stopped
 
 # ─────────────────────────────────────────────────────────────
-# VOLUMES
-# TEACHING POINT — Named volumes are managed by Docker.
-# They persist data between container restarts and rebuilds.
-# `docker compose down` keeps volumes.
-# `docker compose down -v` deletes volumes (be careful!).
-#
-# Three volumes:
-# cv-uploads    → user CV files (backend)
-# chromadb-data → your job vector database (ai-service)
-# model-data    → skill gap ML model (ai-service)
-# ─────────────────────────────────────────────────────────────
-volumes:
-  cv-uploads:
-  chromadb-data:
-  model-data:
-
-# ─────────────────────────────────────────────────────────────
-# NETWORKS
-# TEACHING POINT — Why a custom network?
-# By default, containers are isolated. They can't talk to each
-# other by name. A custom network lets containers reference
-# each other by SERVICE NAME instead of IP address.
-#
-# So inside the backend container, you can call:
-#   http://ai-service:8000/jobs/search
+# NETWORKS — shared bridge so containers can reach each other
+# by service name (e.g. http://ai-service:8000/jobs/search)
 # instead of a hardcoded IP that changes every restart.
 #
 # This is also why on AWS, your backend calls the AI service
@@ -129,3 +107,11 @@ volumes:
 networks:
   arivo-network:
     driver: bridge
+
+# ─────────────────────────────────────────────────────────────
+# NAMED VOLUMES — managed by Docker, persist across restarts
+# ─────────────────────────────────────────────────────────────
+volumes:
+  cv-uploads:
+  chromadb-data:
+  model-data:
