@@ -2,15 +2,9 @@ import { useState, useRef, useEffect } from "react";
 import axios from "axios";
 
 // ─────────────────────────────────────────────────────────────
-// ATS READINESS PAGE · Arivo AI
-// Stages: invite (persistent 2-column console, idle → analysing
-// checklist happens IN PLACE in the right column) → results.
-// Backend contract:
-//   POST /extract-pdf  → { text }
-//   POST /ats/analyse  → { overall_score, categories[], missing_keywords[],
-//                          weak_bullets[], international_lens{...},
-//                          recruiter_notes }
-// Plain CSS-in-JS system, matching the rest of the app.
+// ATS READINESS PAGE · Arivo AI (V2 Premium Architecture)
+// Features: One-Click Bullet Rewrite, LocalStorage Persistence,
+// Zero-Click Job Import from Jobs Page, and Mobile Optimization.
 // ─────────────────────────────────────────────────────────────
 
 const AI_URL = import.meta.env.VITE_AI_URL;
@@ -33,9 +27,40 @@ const C = {
   red: "#ff7a7a",
 };
 
-// One unified list of checks. Idle before analysis, animates through
-// pending → active → done during analysis, in place, in the right
-// column — no separate full-screen loading stage.
+// ── Local Storage & Session Helpers ──
+const readLS = (key, fallback) => {
+  try {
+    const r = localStorage.getItem(key);
+    return r ? JSON.parse(r) : fallback;
+  } catch (err) {
+    console.warn("Storage read error:", err);
+    return fallback;
+  }
+};
+
+const writeLS = (key, val) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(val));
+  } catch (err) {
+    console.warn("Storage write error:", err);
+  }
+};
+
+const getPendingScan = () => {
+  try {
+    const raw = sessionStorage.getItem("arivo_pending_scan");
+    if (!raw) return null;
+    try {
+      return { isJson: true, data: JSON.parse(raw), raw };
+    } catch {
+      return { isJson: false, raw };
+    }
+  } catch (err) {
+    console.warn("Session read error:", err);
+    return null;
+  }
+};
+
 const CHECKS = [
   {
     key: "parse",
@@ -68,13 +93,13 @@ const prefersReducedMotion = () =>
   typeof window !== "undefined" &&
   window.matchMedia &&
   window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
 const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
 
 function useCountUp(target, duration = 1100) {
   const end = Number(target) || 0;
   const reduced = prefersReducedMotion();
   const [value, setValue] = useState(reduced ? end : 0);
+
   useEffect(() => {
     if (reduced) return;
     let raf;
@@ -87,6 +112,7 @@ function useCountUp(target, duration = 1100) {
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [end, duration, reduced]);
+
   return value;
 }
 
@@ -101,26 +127,74 @@ const scoreBand = (s) => {
 const statusColor = (status) =>
   status === "pass" ? C.green : status === "warn" ? C.amber : C.red;
 
-function ATS({ onNavigate }) {
-  const [stage, setStage] = useState("invite"); // invite | results
+export default function ATS({ onNavigate }) {
+  // AMNESIA FIX + ESLINT CASCADING RENDER FIX:
+  // We process the sessionStorage directly during the useState initialization.
+  const [stage, setStage] = useState(() => {
+    const pending = getPendingScan();
+    if (pending) return "invite";
+    return readLS("arivo_ats_stage", "invite");
+  });
+
+  const [jobText, setJobText] = useState(() => {
+    const pending = getPendingScan();
+    if (pending) {
+      if (pending.isJson && pending.data) {
+        const d = pending.data;
+        if (d.isPartial) {
+          return `${d.title} at ${d.company}\n\n${d.description}\n\n[ PASTE THE REST OF THE FULL JOB DESCRIPTION HERE ]`;
+        }
+        return d.description || "";
+      }
+      return pending.raw;
+    }
+    return readLS("arivo_ats_jobText", "");
+  });
+
+  const [isPartial, setIsPartial] = useState(() => {
+    const pending = getPendingScan();
+    if (pending && pending.isJson && pending.data?.isPartial) return true;
+    return false;
+  });
+
+  const [extractedText, setExtractedText] = useState(() =>
+    readLS("arivo_ats_cvText", ""),
+  );
+  const [result, setResult] = useState(() => readLS("arivo_ats_result", null));
+
   const [analysing, setAnalysing] = useState(false);
   const [stepDone, setStepDone] = useState(-1);
-
-  const [jobText, setJobText] = useState("");
   const [file, setFile] = useState(null);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState("");
-
-  const [extractedText, setExtractedText] = useState("");
   const [extracting, setExtracting] = useState(false);
   const [showRaw, setShowRaw] = useState(false);
 
-  const [result, setResult] = useState(null);
   const fileInput = useRef(null);
 
-  // Extract text the moment a CV is uploaded — not on click. This lets
-  // "see what the robot sees" work immediately, and analyse() reuses
-  // this instead of re-extracting.
+  // Auto-Save State
+  useEffect(() => {
+    writeLS("arivo_ats_stage", stage);
+  }, [stage]);
+  useEffect(() => {
+    writeLS("arivo_ats_jobText", jobText);
+  }, [jobText]);
+  useEffect(() => {
+    writeLS("arivo_ats_cvText", extractedText);
+  }, [extractedText]);
+  useEffect(() => {
+    writeLS("arivo_ats_result", result);
+  }, [result]);
+
+  // Clean up the session storage ONLY. No state setting here, which fixes the ESLint error.
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem("arivo_pending_scan");
+    } catch (err) {
+      console.warn("Session clean error:", err);
+    }
+  }, []);
+
   const pickFile = async (f) => {
     if (!f) return;
     if (f.type !== "application/pdf") {
@@ -131,10 +205,12 @@ function ATS({ onNavigate }) {
       setError("That file is over 5MB. Try a smaller PDF.");
       return;
     }
+
     setError("");
     setFile(f);
     setExtractedText("");
     setExtracting(true);
+
     try {
       const fd = new FormData();
       fd.append("file", f);
@@ -142,8 +218,9 @@ function ATS({ onNavigate }) {
         headers: { "Content-Type": "multipart/form-data" },
       });
       setExtractedText(ex.data?.text || "");
-    } catch {
-      // Non-fatal here — analyse() retries extraction if this failed
+    } catch (err) {
+      console.warn("Extraction error:", err);
+      setError("Failed to extract text from PDF. Ensure backend is running.");
     }
     setExtracting(false);
   };
@@ -156,13 +233,16 @@ function ATS({ onNavigate }) {
 
   const analyse = async () => {
     setError("");
-    if (!jobText.trim()) {
+    if (
+      !jobText.trim() ||
+      jobText.includes("[ PASTE THE REST OF THE FULL JOB DESCRIPTION HERE ]")
+    ) {
       setError(
-        "Paste the job description first — we match your CV against it.",
+        "Please paste the full job description before analyzing to ensure an accurate score.",
       );
       return;
     }
-    if (!file) {
+    if (!extractedText && !file) {
       setError("Upload your CV as a PDF so we can read it the way ATS does.");
       return;
     }
@@ -179,7 +259,7 @@ function ATS({ onNavigate }) {
 
     try {
       let cvText = extractedText;
-      if (!cvText) {
+      if (!cvText && file) {
         const fd = new FormData();
         fd.append("file", file);
         const ex = await axios.post(EXTRACT_ENDPOINT, fd, {
@@ -202,6 +282,7 @@ function ATS({ onNavigate }) {
         setStage("results");
       }, 500);
     } catch (err) {
+      console.warn("Analysis error:", err);
       clearInterval(timer);
       setAnalysing(false);
       setError(
@@ -216,6 +297,7 @@ function ATS({ onNavigate }) {
     setResult(null);
     setFile(null);
     setJobText("");
+    setIsPartial(false);
     setStepDone(-1);
     setAnalysing(false);
     setExtractedText("");
@@ -224,7 +306,7 @@ function ATS({ onNavigate }) {
   };
 
   return (
-    <div style={{ background: C.bg, minHeight: "calc(100vh - 56px)" }}>
+    <div className="ats-wrapper">
       <style>{css}</style>
       <div className="ats-wrap">
         {showRaw ? (
@@ -233,6 +315,8 @@ function ATS({ onNavigate }) {
           <Invite
             jobText={jobText}
             setJobText={setJobText}
+            isPartial={isPartial}
+            setIsPartial={setIsPartial}
             file={file}
             dragOver={dragOver}
             setDragOver={setDragOver}
@@ -263,7 +347,6 @@ function ATS({ onNavigate }) {
   );
 }
 
-// ── Robot Eyes — raw extracted-text terminal view ───────────────
 function RobotEyes({ text, onClose }) {
   return (
     <div className="ats-robot">
@@ -288,7 +371,6 @@ function RobotEyes({ text, onClose }) {
   );
 }
 
-// ── The unified idle/loading checklist, right column ────────────
 function CheckList({ analysing, stepDone, jobReady, cvReady }) {
   return (
     <div className="ats-checks">
@@ -347,6 +429,8 @@ function Invite(props) {
   const {
     jobText,
     setJobText,
+    isPartial,
+    setIsPartial,
     file,
     dragOver,
     setDragOver,
@@ -361,9 +445,8 @@ function Invite(props) {
     extracting,
     onShowRaw,
   } = props;
-
   const jobReady = jobText.trim().length > 80;
-  const cvReady = !!file;
+  const cvReady = !!file || !!extractedText;
   const bothReady = jobReady && cvReady;
 
   return (
@@ -376,10 +459,9 @@ function Invite(props) {
         <p className="ats-sub">
           Most CVs are filtered by software before a human ever reads them.
           Arivo checks what those systems actually look at, and shows you
-          exactly what to fix. No fake guarantees, just the truth.
+          exactly what to fix.
         </p>
       </header>
-
       <div className="ats-console">
         <div className="ats-work">
           <div className={`ats-card ${analysing ? "is-disabled" : ""}`}>
@@ -387,15 +469,34 @@ function Invite(props) {
               <span className="ats-step-num">1</span> Paste the job description
               {jobReady && <span className="ats-ready-tag">✓ ready</span>}
             </label>
+            {isPartial && (
+              <div className="ats-partial-banner">
+                <span className="ats-partial-ic">⚡</span>
+                <div>
+                  <div className="ats-partial-t">Partial Match Imported</div>
+                  <div className="ats-partial-s">
+                    We loaded the baseline summary from your search. Please copy
+                    the rest of the requirements from the full listing and paste
+                    them below for a 100% accurate scan.
+                  </div>
+                </div>
+                <button
+                  className="ats-partial-close"
+                  onClick={() => setIsPartial(false)}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
             <textarea
               className="ats-textarea"
-              placeholder="Paste the full job posting here, responsibilities, requirements, everything. The more complete, the better we match your keywords."
+              placeholder="Paste the full job posting here..."
               value={jobText}
               onChange={(e) => setJobText(e.target.value)}
               disabled={analysing}
             />
             <span className="ats-hint">
-              {jobText.length} characters
+              {jobText.length} characters{" "}
               {jobReady ? " · looks good" : " · paste the full posting"}
             </span>
           </div>
@@ -406,7 +507,7 @@ function Invite(props) {
               {cvReady && <span className="ats-ready-tag">✓ ready</span>}
             </label>
             <div
-              className={`ats-drop ${dragOver ? "is-over" : ""} ${file ? "has-file" : ""}`}
+              className={`ats-drop ${dragOver ? "is-over" : ""} ${file || extractedText ? "has-file" : ""}`}
               onDragOver={(e) => {
                 if (!analysing) {
                   e.preventDefault();
@@ -424,13 +525,14 @@ function Invite(props) {
                 hidden
                 onChange={(e) => pickFile(e.target.files?.[0])}
               />
-              {file ? (
+              {file || extractedText ? (
                 <div className="ats-file">
                   <div className="ats-file-ic">{extracting ? "…" : "✓"}</div>
                   <div>
-                    <div className="ats-file-name">{file.name}</div>
+                    <div className="ats-file-name">
+                      {file ? file.name : "Saved CV Profile Loaded"}
+                    </div>
                     <div className="ats-file-meta">
-                      {(file.size / 1024).toFixed(0)} KB ·{" "}
                       {extracting ? "reading…" : "click to replace"}
                     </div>
                   </div>
@@ -453,10 +555,8 @@ function Invite(props) {
                       <path d="M12 3v12" />
                     </svg>
                   </div>
-                  <div className="ats-drop-main">Drop your CV here</div>
-                  <div className="ats-drop-sub">
-                    or click to browse · PDF only
-                  </div>
+                  <div className="ats-drop-main">Drop your CV PDF here</div>
+                  <div className="ats-drop-sub">or click to browse</div>
                 </>
               )}
             </div>
@@ -494,16 +594,12 @@ function Invite(props) {
               </svg>
             )}
           </button>
-          <span className="ats-cta-note">
-            Your CV is analysed in the moment and never shared.
-          </span>
         </div>
 
         <aside className="ats-preview">
           <div className="ats-preview-head">
             {analysing ? "Running the checks…" : "What Arivo checks"}
           </div>
-
           {!analysing && (
             <div className="ats-lens-hero">
               <span className="ats-lens-hero-badge">
@@ -516,7 +612,6 @@ function Invite(props) {
               </div>
             </div>
           )}
-
           <CheckList
             analysing={analysing}
             stepDone={stepDone}
@@ -538,10 +633,16 @@ function Results({ result, reset, onNavigate, extractedText, onShowRaw }) {
     international_lens = { status: "clear", headline: "", flags: [] },
     recruiter_notes = "",
   } = result;
-
   const lensHasFlags =
     international_lens.status === "flags_found" &&
     (international_lens.flags || []).length > 0;
+
+  // THE MAGIC WAND BRIDGE
+  const handleRewriteBridge = (bullet) => {
+    const prompt = `My CV bullet point is weak and failing ATS: "${bullet}". Rewrite this to be powerful, metric-driven, and highly ATS-friendly for the UK market.`;
+    sessionStorage.setItem("arivo_pending_coach_prompt", prompt);
+    if (onNavigate) onNavigate("chat");
+  };
 
   return (
     <div className="ats-res">
@@ -551,8 +652,7 @@ function Results({ result, reset, onNavigate, extractedText, onShowRaw }) {
           <h2 className="ats-res-h">Your ATS Readiness</h2>
           <p className="ats-res-p">
             This is how well your CV holds up against automated screening for
-            the job you pasted. Work through the fixes below, each one lifts
-            your real-world chances.
+            the job you pasted.
           </p>
           <div className="ats-res-btns">
             <button className="ats-btn-ghost" onClick={reset}>
@@ -574,8 +674,7 @@ function Results({ result, reset, onNavigate, extractedText, onShowRaw }) {
               💭 The AI Recruiter's Simulated Notes
             </span>
             <span className="ats-monologue-sub">
-              A blunt first-scan impression, grounded only in your CV's craft,
-              never anything else.
+              A blunt first-scan impression, grounded only in your CV's craft.
             </span>
           </div>
           <p className="ats-monologue-text">{recruiter_notes}</p>
@@ -651,39 +750,21 @@ function Results({ result, reset, onNavigate, extractedText, onShowRaw }) {
           <ul className="ats-weak">
             {weak_bullets.map((b, i) => (
               <li key={i} className="ats-weak-item">
-                <span className="ats-weak-quote">"{b}"</span>
+                <div className="ats-weak-content">
+                  <span className="ats-weak-quote">"{b}"</span>
+                </div>
+                {/* ONE-CLICK REWRITE */}
+                <button
+                  className="ats-magic-btn"
+                  onClick={() => handleRewriteBridge(b)}
+                >
+                  ✨ Auto-Rewrite
+                </button>
               </li>
             ))}
           </ul>
         </section>
       )}
-
-      <section className="ats-bridges">
-        <h3 className="ats-section-h">Keep going</h3>
-        <div className="ats-bridge-grid">
-          <button className="ats-bridge" onClick={() => onNavigate("profile")}>
-            <div className="ats-bridge-ic">🎯</div>
-            <div className="ats-bridge-t">See your full skill gap</div>
-            <div className="ats-bridge-d">
-              Find exactly which skills UK employers want for your target role.
-            </div>
-          </button>
-          <button className="ats-bridge" onClick={() => onNavigate("jobs")}>
-            <div className="ats-bridge-ic">💼</div>
-            <div className="ats-bridge-t">Browse visa-sponsored jobs</div>
-            <div className="ats-bridge-d">
-              Real London roles checked against the official sponsor register.
-            </div>
-          </button>
-          <button className="ats-bridge" onClick={() => onNavigate("chat")}>
-            <div className="ats-bridge-ic">💬</div>
-            <div className="ats-bridge-t">Ask your Coach</div>
-            <div className="ats-bridge-d">
-              Get help rewriting a bullet or tailoring your CV to a role.
-            </div>
-          </button>
-        </div>
-      </section>
     </div>
   );
 }
@@ -695,7 +776,6 @@ function RadialGauge({ score }) {
   const r = 54;
   const circ = 2 * Math.PI * r;
   const offset = circ * (1 - shown / 100);
-
   return (
     <div className="ats-gauge">
       <svg viewBox="0 0 120 120" className="ats-gauge-svg" aria-hidden="true">
@@ -740,7 +820,7 @@ function RadialGauge({ score }) {
 
 function CategoryCard({ c }) {
   const color = statusColor(c.status);
-  const pct = Math.round((c.score / c.max) * 100);
+  const pct = Math.max(0, Math.min(100, Math.round((c.score / c.max) * 100)));
   return (
     <div className="ats-cat">
       <div className="ats-cat-top">
@@ -761,30 +841,38 @@ function CategoryCard({ c }) {
   );
 }
 
+// ─────────────────────────────────────────────────────────────
+// CSS STYLES (MOBILE OPTIMIZED)
+// ─────────────────────────────────────────────────────────────
 const css = `
-.ats-wrap {
-  padding: 2.5rem clamp(1.5rem,4vw,4.5rem) 5rem;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  color: ${C.text};
-}
+.ats-wrapper { background: ${C.bg}; min-height: calc(100vh - 56px); }
+.ats-wrap { padding: 2.5rem clamp(1.5rem,4vw,4.5rem) 5rem; font-family: 'Inter', system-ui, -apple-system, sans-serif; color: ${C.text}; max-width: 1400px; margin: 0 auto; }
 @keyframes ats-up { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
-
 .ats-hero { max-width: 680px; margin: 0 0 2rem; animation: ats-up .5s ease both; }
 .ats-eyebrow { display:inline-block; font-size:11px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:#a89cf7; margin-bottom:14px; padding:5px 12px; border:1px solid ${C.borderHi}; border-radius:999px; background:rgba(124,111,239,.08); }
 .ats-title { font-size:clamp(1.9rem,3.2vw,2.4rem); line-height:1.12; font-weight:800; letter-spacing:-.03em; margin:0 0 14px; }
 .ats-sub { font-size:14.5px; line-height:1.65; color:${C.text2}; margin:0; }
 
-.ats-console { display:grid; grid-template-columns:1.05fr 0.95fr; gap:18px; align-items:start; animation: ats-up .5s ease .08s both; }
+.ats-console { display:grid; grid-template-columns:1.05fr 0.95fr; gap:24px; align-items:start; animation: ats-up .5s ease .08s both; }
 .ats-work { display:flex; flex-direction:column; gap:16px; }
 .ats-card { background:${C.panel}; border:1px solid ${C.border}; border-radius:16px; padding:20px; display:flex; flex-direction:column; transition:opacity .25s; }
 .ats-card.is-disabled { opacity:.5; pointer-events:none; }
 .ats-label { display:flex; align-items:center; gap:9px; font-size:14px; font-weight:700; color:${C.text}; margin-bottom:13px; }
 .ats-step-num { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%; background:${C.grad}; color:#fff; font-size:12px; font-weight:700; flex-shrink:0; }
 .ats-ready-tag { margin-left:auto; font-size:11px; font-weight:700; color:${C.green}; background:rgba(0,212,170,.12); border:1px solid rgba(0,212,170,.3); padding:3px 10px; border-radius:999px; }
+
+.ats-partial-banner { display:flex; gap:12px; background:rgba(245,196,81,.08); border:1px solid rgba(245,196,81,.28); border-radius:11px; padding:14px 16px; margin-bottom:14px; position:relative; }
+.ats-partial-ic { font-size:16px; flex-shrink:0; }
+.ats-partial-t { font-size:13.5px; font-weight:700; color:${C.amber}; margin-bottom:4px; }
+.ats-partial-s { font-size:12.5px; line-height:1.5; color:${C.text2}; padding-right:16px; }
+.ats-partial-close { position:absolute; top:12px; right:12px; background:transparent; border:none; color:${C.text3}; cursor:pointer; font-size:14px; padding:4px; transition:color .15s; }
+.ats-partial-close:hover { color:${C.text}; }
+
 .ats-textarea { flex:1; min-height:170px; resize:vertical; background:${C.inset}; border:1px solid ${C.border}; border-radius:11px; padding:13px; color:${C.text}; font-size:13.5px; line-height:1.55; font-family:inherit; outline:none; transition:border-color .18s, box-shadow .18s; }
 .ats-textarea:focus { border-color:#7c6fef; box-shadow:0 0 0 3px rgba(124,111,239,.15); }
 .ats-textarea::placeholder { color:${C.text3}; }
 .ats-hint { font-size:11.5px; color:${C.text3}; margin-top:8px; align-self:flex-end; }
+
 .ats-drop { flex:1; min-height:150px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; cursor:pointer; background:${C.inset}; border:1.5px dashed ${C.border}; border-radius:11px; transition:all .18s; text-align:center; padding:20px; }
 .ats-drop:hover { border-color:${C.borderHi}; background:rgba(124,111,239,.04); }
 .ats-drop.is-over { border-color:#7c6fef; background:rgba(124,111,239,.08); transform:scale(1.01); }
@@ -793,23 +881,24 @@ const css = `
 .ats-drop:hover .ats-drop-ic { color:#a89cf7; }
 .ats-drop-main { font-size:14.5px; font-weight:700; color:${C.text}; }
 .ats-drop-sub { font-size:12.5px; color:${C.text3}; }
-.ats-file { display:flex; align-items:center; gap:13px; }
+
+.ats-file { display:flex; align-items:center; gap:13px; text-align: left; }
 .ats-file-ic { width:38px; height:38px; border-radius:50%; background:rgba(0,212,170,.15); color:${C.green}; display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:700; flex-shrink:0; }
 .ats-file-name { font-size:14px; font-weight:700; color:${C.text}; word-break:break-all; }
 .ats-file-meta { font-size:12px; color:${C.text3}; margin-top:2px; }
+
 .ats-robot-link { margin-top:12px; align-self:flex-start; background:none; border:none; color:#a89cf7; font-size:12.5px; font-weight:600; cursor:pointer; padding:0; font-family:inherit; }
 .ats-robot-link:hover { text-decoration:underline; }
 .ats-error { background:rgba(255,122,122,.10); border:1px solid rgba(255,122,122,.35); color:${C.red}; font-size:13px; padding:11px 15px; border-radius:10px; text-align:center; }
-.ats-btn { display:inline-flex; align-items:center; justify-content:center; gap:9px; padding:14px 30px; background:${C.grad}; color:#fff; border:none; border-radius:12px; font-size:15px; font-weight:700; cursor:pointer; box-shadow:0 8px 24px rgba(124,111,239,.3); transition:filter .18s, transform .12s, box-shadow .2s; opacity:.78; }
+.ats-btn { display:inline-flex; align-items:center; justify-content:center; gap:9px; padding:14px 30px; background:${C.grad}; color:#fff; border:none; border-radius:12px; font-size:15px; font-weight:700; cursor:pointer; box-shadow:0 8px 24px rgba(124,111,239,.3); transition:all .2s; opacity:.78; width: 100%; height: 50px; }
 .ats-btn.is-ready { opacity:1; box-shadow:0 10px 30px rgba(124,111,239,.5); animation:ats-glow 2.2s ease-in-out infinite; }
 .ats-btn:disabled { cursor:not-allowed; opacity:.6; animation:none; }
 @keyframes ats-glow { 0%,100%{ box-shadow:0 10px 30px rgba(124,111,239,.4); } 50%{ box-shadow:0 10px 38px rgba(124,111,239,.65); } }
-.ats-btn:hover:not(:disabled) { filter:brightness(1.1); }
+.ats-btn:hover:not(:disabled) { filter:brightness(1.1); transform: translateY(-2px); }
 .ats-cta-note { font-size:12px; color:${C.text3}; text-align:center; }
 
 .ats-preview { background:linear-gradient(160deg, rgba(124,111,239,.06), rgba(0,0,0,0)); border:1px solid ${C.border}; border-radius:18px; padding:22px; position:sticky; top:74px; }
 .ats-preview-head { font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:${C.text2}; margin-bottom:16px; }
-
 .ats-lens-hero { background:linear-gradient(135deg, rgba(124,111,239,.16), rgba(232,121,249,.08)); border:1px solid ${C.borderHi}; border-radius:14px; padding:18px; margin-bottom:18px; }
 .ats-lens-hero-badge { display:inline-block; font-size:12px; font-weight:800; color:#fff; background:rgba(255,255,255,.08); padding:5px 11px; border-radius:999px; border:1px solid rgba(255,255,255,.1); margin-bottom:11px; }
 .ats-lens-hero-t { font-size:15px; font-weight:800; letter-spacing:-.01em; margin-bottom:6px; }
@@ -827,26 +916,28 @@ const css = `
 .ats-check-t { font-size:13.5px; font-weight:700; color:${C.text}; }
 .ats-check.is-idle .ats-check-t { color:${C.text2}; }
 .ats-check-d { font-size:12px; color:${C.text3}; line-height:1.45; margin-top:2px; }
+
 .ats-ready-row { display:flex; gap:8px; margin-top:14px; padding-top:14px; border-top:1px solid ${C.border}; }
 .ats-ready-pill { flex:1; display:flex; align-items:center; gap:8px; font-size:12.5px; font-weight:600; color:${C.text3}; background:${C.inset}; border:1px solid ${C.border}; border-radius:10px; padding:9px 12px; transition:all .25s; }
 .ats-ready-pill .ats-ready-ic { width:18px; height:18px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:10px; font-weight:800; background:${C.panel2}; color:${C.text3}; flex-shrink:0; }
 .ats-ready-pill.on { color:${C.text}; border-color:rgba(0,212,170,.35); background:rgba(0,212,170,.07); }
 .ats-ready-pill.on .ats-ready-ic { background:${C.green}; color:#04201b; }
 
-/* Robot eyes terminal */
-.ats-robot { max-width: 900px; animation: ats-up .4s ease both; }
+.ats-robot { max-width: 900px; animation: ats-up .4s ease both; margin: 0 auto;}
 .ats-robot-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:18px; flex-wrap:wrap; }
 .ats-robot-title { font-size:19px; font-weight:800; color:${C.text}; margin-bottom:6px; }
 .ats-robot-sub { font-size:13px; color:${C.text2}; line-height:1.55; max-width:480px; }
 .ats-robot-terminal { background:#050508; border:1px solid rgba(0,212,170,.25); border-radius:14px; padding:22px; color:${C.green}; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; line-height:1.7; white-space:pre-wrap; word-break:break-word; max-height:70vh; overflow-y:auto; box-shadow:0 0 40px rgba(0,212,170,.06) inset; }
 
-/* Results */
-.ats-res { display:flex; flex-direction:column; gap:26px; animation: ats-up .5s ease both; }
+.ats-res { display:flex; flex-direction:column; gap:26px; animation: ats-up .5s ease both; max-width: 1000px; margin: 0 auto; }
 .ats-res-hero { display:flex; align-items:center; gap:32px; background:${C.panel}; border:1px solid ${C.border}; border-radius:20px; padding:30px 32px; flex-wrap:wrap; }
 .ats-res-verdict { flex:1; min-width:260px; }
 .ats-res-h { font-size:22px; font-weight:800; letter-spacing:-.02em; color:${C.text}; margin:0 0 8px; }
 .ats-res-p { font-size:14px; line-height:1.6; color:${C.text2}; margin:0 0 16px; }
 .ats-res-btns { display:flex; gap:10px; flex-wrap:wrap; }
+.ats-btn-ghost { background:transparent; border:1px solid ${C.border}; color:${C.text2}; padding:10px 18px; border-radius:999px; cursor:pointer; font-size:13px; font-weight: 600; font-family:inherit; transition: all 0.2s; }
+.ats-btn-ghost:hover { color:${C.text}; border-color:${C.borderHi}; background: rgba(255,255,255,0.05); }
+
 .ats-gauge { position:relative; width:150px; height:150px; flex-shrink:0; }
 .ats-gauge-svg { width:100%; height:100%; }
 .ats-gauge-track { fill:none; stroke:${C.inset}; stroke-width:11; }
@@ -854,9 +945,8 @@ const css = `
 .ats-gauge-center { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
 .ats-gauge-num { font-size:34px; font-weight:800; color:${C.text}; letter-spacing:-.03em; line-height:1; }
 .ats-gauge-num span { font-size:14px; color:${C.text3}; font-weight:600; }
-.ats-gauge-label { font-size:12.5px; font-weight:700; margin-top:5px; }
+.ats-gauge-label { font-size:12.5px; font-weight:700; margin-top:5px; text-transform: uppercase; letter-spacing: 0.05em; }
 
-/* Recruiter monologue */
 .ats-monologue { background:linear-gradient(135deg, rgba(245,196,81,.08), rgba(124,111,239,.05)); border:1px solid rgba(245,196,81,.28); border-radius:18px; padding:24px 26px; }
 .ats-monologue-head { margin-bottom:14px; }
 .ats-monologue-badge { display:inline-block; font-size:13px; font-weight:800; color:${C.text}; background:rgba(255,255,255,.06); padding:6px 13px; border-radius:999px; border:1px solid ${C.border}; margin-bottom:8px; }
@@ -877,9 +967,11 @@ const css = `
 .ats-flag-fix { display:flex; align-items:flex-start; gap:9px; font-size:13px; line-height:1.5; color:${C.text}; }
 .ats-flag-fix-tag { font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.06em; color:${C.green}; background:rgba(0,212,170,.12); padding:3px 8px; border-radius:6px; flex-shrink:0; margin-top:1px; }
 .ats-lens-clear { font-size:14px; color:${C.text2}; }
+
 .ats-section-h { font-size:16px; font-weight:700; color:${C.text}; margin:0 0 16px; letter-spacing:-.02em; }
 .ats-cat-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:14px; }
-.ats-cat { background:${C.panel}; border:1px solid ${C.border}; border-radius:14px; padding:18px; }
+.ats-cat { background:${C.panel}; border:1px solid ${C.border}; border-radius:14px; padding:18px; transition: transform 0.2s; }
+.ats-cat:hover { transform: translateY(-2px); border-color: rgba(255,255,255,0.15); }
 .ats-cat-top { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:11px; }
 .ats-cat-name { font-size:14px; font-weight:600; color:${C.text}; }
 .ats-cat-score { font-size:19px; font-weight:800; }
@@ -887,35 +979,39 @@ const css = `
 .ats-cat-bar { height:6px; background:${C.inset}; border-radius:999px; overflow:hidden; margin-bottom:11px; }
 .ats-cat-fill { height:100%; border-radius:999px; transition:width .9s ease; }
 .ats-cat-detail { font-size:12.5px; line-height:1.5; color:${C.text2}; margin:0; }
-.ats-block { background:${C.panel}; border:1px solid ${C.border}; border-radius:16px; padding:22px 24px; }
+
+.ats-block { background:${C.panel}; border:1px solid ${C.border}; border-radius:16px; padding:24px; }
 .ats-block-sub { font-size:13px; color:${C.text2}; margin:-8px 0 16px; line-height:1.5; }
 .ats-chips { display:flex; flex-wrap:wrap; gap:8px; }
 .ats-chip { font-size:13px; font-weight:600; color:#c9c2f8; background:rgba(124,111,239,.12); border:1px solid ${C.borderHi}; padding:6px 13px; border-radius:999px; }
-.ats-weak { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:9px; }
-.ats-weak-item { background:${C.inset}; border-left:3px solid ${C.amber}; border-radius:8px; padding:11px 15px; }
-.ats-weak-quote { font-size:13.5px; color:${C.text2}; font-style:italic; }
-.ats-bridge-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px; }
-.ats-bridge { background:${C.panel}; border:1px solid ${C.border}; border-radius:14px; padding:18px; transition:border-color .18s, transform .12s; font-family:inherit; text-align:left; width:100%; cursor:pointer; }
-.ats-bridge:hover { border-color:${C.borderHi}; transform:translateY(-2px); }
-.ats-bridge-ic { font-size:22px; margin-bottom:10px; }
-.ats-bridge-t { font-size:14px; font-weight:700; color:${C.text}; margin-bottom:6px; }
-.ats-bridge-d { font-size:12.5px; line-height:1.5; color:${C.text2}; }
-.ats-btn-ghost { background:transparent; border:1px solid ${C.border}; color:${C.text2}; padding:10px 18px; border-radius:999px; cursor:pointer; font-size:13px; font-family:inherit; }
-.ats-btn-ghost:hover { color:${C.text}; border-color:${C.borderHi}; }
 
-@media (max-width:880px) {
-  .ats-console { grid-template-columns:1fr; }
-  .ats-preview { position:static; }
+.ats-weak { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:12px; }
+.ats-weak-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; background:${C.inset}; border-left:3px solid ${C.amber}; border-radius:10px; padding:14px 16px; }
+.ats-weak-content { flex: 1; }
+.ats-weak-quote { font-size:13.5px; color:${C.text2}; font-style:italic; line-height: 1.5; }
+.ats-magic-btn { flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px; background: rgba(124, 111, 239, 0.1); border: 1px solid rgba(124, 111, 239, 0.3); color: #b0a8ff; padding: 8px 14px; border-radius: 8px; font-size: 12.5px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+.ats-magic-btn:hover { background: var(--pur); color: #fff; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(124, 111, 239, 0.3); }
+
+/* ── STRICT MOBILE OPTIMIZATION ── */
+@media (max-width: 880px) { 
+  .ats-console { grid-template-columns: 1fr; gap: 32px; } 
+  .ats-preview { position: static; } 
 }
-@media (max-width:600px) {
-  .ats-wrap { padding:1.75rem 1.1rem 3rem; }
-  .ats-res-hero { flex-direction:column; text-align:center; }
+
+@media (max-width: 600px) { 
+  .ats-wrap { padding: 1.5rem 1rem 3rem; } 
+  .ats-res-hero { flex-direction: column; text-align: center; padding: 24px 16px; } 
+  .ats-res-btns { justify-content: center; width: 100%; }
+  .ats-btn-ghost { width: 100%; justify-content: center; }
+  .ats-card { padding: 16px; }
+  .ats-ready-row { flex-direction: column; }
+  .ats-weak-item { flex-direction: column; align-items: stretch; }
+  .ats-magic-btn { width: 100%; justify-content: center; }
 }
-@media (prefers-reduced-motion: reduce) {
-  .ats-btn.is-ready, .ats-check-pulse { animation:none !important; }
-  .ats-gauge-prog, .ats-cat-fill { transition:none !important; }
-  [class*="ats-"] { animation:none !important; }
+
+@media (prefers-reduced-motion: reduce) { 
+  .ats-btn.is-ready, .ats-check-pulse { animation:none !important; } 
+  .ats-gauge-prog, .ats-cat-fill { transition:none !important; } 
+  [class*="ats-"] { animation:none !important; } 
 }
 `;
-
-export default ATS;

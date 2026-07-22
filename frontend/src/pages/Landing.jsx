@@ -426,7 +426,7 @@ export default function Landing({ onGetStarted }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// PURE CSS MAGIC
+// PURE CSS MAGIC (MOBILE FIXES APPLIED)
 // ─────────────────────────────────────────────────────────────
 const css = `
 /* Base & Resets */
@@ -509,7 +509,7 @@ const css = `
   font-size: 0.85rem; font-weight: 600; color: #E2E8F0; margin-bottom: 2rem;
 }
 .badge-glow { width: 8px; height: 8px; background: ${C.primary}; border-radius: 50%; box-shadow: 0 0 10px ${C.primary}; animation: pulse 2s infinite; }
-.hero-title { font-size: clamp(3rem, 5vw, 4.5rem); font-weight: 800; line-height: 1.1; letter-spacing: -0.03em; margin: 0 0 1.5rem; }
+.hero-title { font-size: clamp(2.5rem, 6vw, 4.5rem); font-weight: 800; line-height: 1.1; letter-spacing: -0.03em; margin: 0 0 1.5rem; }
 .hero-subtitle { font-size: 1.1rem; color: ${C.textMuted}; line-height: 1.6; max-width: 540px; margin: 0 0 2.5rem; }
 .hero-subtitle strong { color: #fff; font-weight: 600; }
 .hero-cta-group { display: flex; align-items: center; gap: 2rem; flex-wrap: wrap; }
@@ -528,7 +528,7 @@ const css = `
 .stat-num { font-size: 1.25rem; font-weight: 800; color: #fff; letter-spacing: -0.02em; text-transform: none; }
 .stat-divider { width: 1px; height: 30px; background: ${C.border}; }
 
-.hero-visual { flex: 0.8; display: flex; justify-content: flex-end; }
+.hero-visual { flex: 0.8; display: flex; justify-content: flex-end; width: 100%; }
 
 /* The Scanner Widget */
 .scanner-widget {
@@ -546,9 +546,10 @@ const css = `
 .target-name { font-size: 1.2rem; font-weight: 700; color: #fff; margin-bottom: 4px; }
 .target-status { font-size: 0.8rem; color: ${C.textMuted}; }
 
-.scan-window { background: #050508; border: 1px solid ${C.border}; border-radius: 8px; height: 80px; position: relative; overflow: hidden; padding: 12px; }
+.scan-window { background: #050508; border: 1px solid ${C.border}; border-radius: 8px; height: auto; min-height: 80px; position: relative; overflow: hidden; padding: 12px; }
 .scan-laser { position: absolute; left: 0; right: 0; height: 2px; background: ${C.primary}; box-shadow: 0 0 10px 2px ${C.primary}; animation: scanLaser 1.5s ease-in-out infinite alternate; opacity: 0.8; }
-.scan-code p { margin: 0 0 6px; font-family: 'Fira Code', monospace; font-size: 0.75rem; color: #6B7280; }
+/* UX Fix: Prevent long API calls from breaking the box on small phones */
+.scan-code p { margin: 0 0 6px; font-family: 'Fira Code', monospace; font-size: 0.75rem; color: #6B7280; word-wrap: break-word; white-space: pre-wrap; }
 .scan-code .text-emerald { color: ${C.success}; text-shadow: 0 0 8px rgba(16, 185, 129, 0.4); }
 
 .scanner-footer { padding: 16px 20px; background: rgba(255,255,255,0.02); border-top: 1px solid ${C.border}; font-size: 0.8rem; font-weight: 600; display: flex; align-items: center; transition: all 0.3s; }
@@ -629,7 +630,7 @@ const css = `
 .link-col span { display: block; font-size: 0.85rem; color: ${C.textMuted}; margin-bottom: 1rem; cursor: pointer; transition: color 0.2s; }
 .link-col span:hover { color: #fff; }
 
-/* Responsive */
+/* ── STRICT MOBILE OPTIMIZATIONS ── */
 @media (max-width: 1024px) {
   .hero-section { flex-direction: column; text-align: center; padding-top: 8rem; }
   .hero-subtitle { margin: 0 auto 2.5rem; }
@@ -642,13 +643,47 @@ const css = `
 }
 
 @media (max-width: 768px) {
-  .bento-grid { grid-template-columns: 1fr; }
-  .col-span-2, .col-span-1, .row-span-2 { grid-column: span 1; grid-row: span 1; }
+  /* Nav Fixes: Hide Sign In to prevent squishing */
+  .nav-container { padding: 1rem 1.5rem; }
+  .nav-actions .btn-ghost { display: none; }
   
+  /* Hero Fixes: Reduce massive padding and make button full width */
+  .hero-section { padding: 7rem 1.5rem 4rem; min-height: auto; }
+  .hero-title { font-size: clamp(2.2rem, 10vw, 3rem); }
+  .hero-cta-group { flex-direction: column; width: 100%; }
+  .btn-primary-large { width: 100%; justify-content: center; }
+  
+  /* Scanner Fixes */
+  .scanner-widget { width: 100%; max-width: 100%; }
+  
+  /* Marquee Fix: Reduce fade so logos are actually visible on small screens */
+  .marquee-fade { width: 50px; }
+  
+  /* Bento Grid Fix: Force exactly 1 column and override spans */
+  .feature-section { padding: 0 1.5rem; margin-bottom: 5rem; }
+  .bento-grid { grid-template-columns: 1fr; }
+  .col-span-2, .col-span-1, .row-span-2, .row-span-1 { 
+    grid-column: span 1 !important; 
+    grid-row: span 1 !important; 
+  }
+  .bento-card { padding: 24px; }
+  
+  /* Pathway Fix */
   .steps-container { grid-template-columns: 1fr; gap: 1rem; }
   .steps-glow-line { display: none; }
   
+  /* Trust Fix */
+  .trust-section { padding: 0 1.5rem; }
   .trust-grid { grid-template-columns: 1fr; }
-  .footer-content { flex-direction: column; gap: 2rem; }
+  
+  /* CTA Fix */
+  .cta-section { padding: 0 1.5rem; margin-bottom: 5rem; }
+  .cta-box { padding: 3rem 1.5rem; }
+  .cta-box h2 { font-size: 1.8rem; }
+  .btn-glow-large { width: 100%; font-size: 1rem; }
+  
+  /* Footer Fix */
+  .footer-content { flex-direction: column; gap: 2.5rem; }
+  .footer-links { flex-wrap: wrap; gap: 2.5rem; }
 }
 `;

@@ -1,30 +1,28 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 
 // ─────────────────────────────────────────────────────────────
-// JOBS PAGE · Arivo AI
-// Full-bleed master-detail: scannable list (left) + full description
-// panel (right). Palette matches Dashboard + Landing.
-// Adds: location, industry, employment type, work-mode filters.
-// Saved roles + recent searches persist locally. No fake data.
+// JOBS PAGE · Arivo AI (V2 Premium Architecture)
+// Features Zero-Click Auto-Feed & The "Backdoor Application" Coach Bridge.
 // ─────────────────────────────────────────────────────────────
 
-const SAVED_KEY = "arivo:savedJobs";
-const RECENT_KEY = "arivo:recentSearches";
+const SAVED_KEY = "arivo_savedJobs";
+const RECENT_KEY = "arivo_recentSearches";
 
 const readLS = (key, fallback) => {
   try {
     const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : fallback;
-  } catch {
+  } catch (err) {
+    console.warn("Storage read error:", err);
     return fallback;
   }
 };
 const writeLS = (key, value) => {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    /* storage off */
+  } catch (err) {
+    console.warn("Storage write error:", err);
   }
 };
 
@@ -60,32 +58,15 @@ const workModeLabel = (m) => {
   return "On-site";
 };
 
-// How many days since we last confirmed this listing was live on
-// Adzuna. This is the honest freshness signal — not the save date,
-// since a job's real risk of being filled doesn't depend on when the
-// user bookmarked it, only on how long ago we actually checked it.
-const daysSince = (dateStr) => {
-  if (!dateStr) return null;
-  const then = new Date(dateStr);
-  if (isNaN(then)) return null;
-  return Math.floor((Date.now() - then.getTime()) / 86400000);
-};
-
 const stalenessMessage = (fetchedAt) => {
-  const days = daysSince(fetchedAt);
-  if (days === null || days < 14) return null;
-  if (days < 30) {
-    return `Listing data is ${days} days old — worth confirming it's still open before applying.`;
-  }
-  return `Listing data is over a month old — this role may have already been filled or removed. Confirm with the employer before applying.`;
-};
-
-const savedAgo = (dateStr) => {
-  const days = daysSince(dateStr);
-  if (days === null) return "";
-  if (days === 0) return "Saved today";
-  if (days === 1) return "Saved yesterday";
-  return `Saved ${days} days ago`;
+  if (!fetchedAt) return null;
+  const then = new Date(fetchedAt);
+  if (isNaN(then)) return null;
+  const days = Math.floor((Date.now() - then.getTime()) / 86400000);
+  if (days < 14) return null;
+  if (days < 30)
+    return `Listing data is ${days} days old — verify it's still open.`;
+  return `Listing data is over a month old — may be filled.`;
 };
 
 const cleanSalary = (s) => {
@@ -102,146 +83,148 @@ const hueFor = (name = "") => {
 };
 
 // ── Icons ─────────────────────────────────────────────────────
-const SearchIcon = ({ size = 18 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <circle cx="11" cy="11" r="7" />
-    <path d="m21 21-4.3-4.3" />
-  </svg>
-);
-const ShieldCheck = ({ size = 13 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2.2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <path d="M12 2 4 5v6c0 5 3.4 8.4 8 11 4.6-2.6 8-6 8-11V5z" />
-    <path d="m9 12 2 2 4-4" />
-  </svg>
-);
-const Arrow = () => (
-  <svg
-    className="aj-arrow"
-    width="14"
-    height="14"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2.4"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <path d="M5 12h14" />
-    <path d="m13 6 6 6-6 6" />
-  </svg>
-);
-const Bookmark = ({ filled }) => (
-  <svg
-    width="16"
-    height="16"
-    viewBox="0 0 24 24"
-    fill={filled ? "currentColor" : "none"}
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-  </svg>
-);
-const Close = () => (
-  <svg
-    width="15"
-    height="15"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2.2"
-    strokeLinecap="round"
-    aria-hidden="true"
-  >
-    <path d="M18 6 6 18M6 6l12 12" />
-  </svg>
-);
-const Clock = ({ size = 12 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <circle cx="12" cy="12" r="9" />
-    <path d="M12 7v5l3 2" />
-  </svg>
-);
-const Back = () => (
-  <svg
-    width="15"
-    height="15"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2.2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <path d="M19 12H5M11 18l-6-6 6-6" />
-  </svg>
-);
-const Filter = ({ size = 15 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <path d="M4 6h16M7 12h10M10 18h4" />
-  </svg>
-);
-const Pin = ({ size = 14 }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="2"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" />
-    <circle cx="12" cy="10" r="3" />
-  </svg>
-);
+const Ic = {
+  search: () => (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="11" cy="11" r="8" />
+      <path d="m21 21-4.3-4.3" />
+    </svg>
+  ),
+  shield: () => (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 2 4 5v6c0 5 3.4 8.4 8 11 4.6-2.6 8-6 8-11V5z" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
+  ),
+  arrow: () => (
+    <svg
+      className="aj-arrow"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M5 12h14" />
+      <path d="m13 6 6 6-6 6" />
+    </svg>
+  ),
+  bookmark: (filled) => (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill={filled ? "currentColor" : "none"}
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+    </svg>
+  ),
+  close: () => (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+    >
+      <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
+  ),
+  clock: () => (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  ),
+  back: () => (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M19 12H5M11 18l-6-6 6-6" />
+    </svg>
+  ),
+  filter: () => (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4 6h16M7 12h10M10 18h4" />
+    </svg>
+  ),
+  scan: () => (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+      <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+      <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+      <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+      <circle cx="12" cy="12" r="3" />
+      <path d="m16 16-1.9-1.9" />
+    </svg>
+  ),
+  sparkle: () => (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2l2.4 7.6H22l-6.4 4.6 2.4 7.8L12 17.4l-6 4.6 2.4-7.8L2 9.6h7.6z" />
+    </svg>
+  ),
+};
 
 // ── Compact list card ─────────────────────────────────────────
 function ListCard({ job, active, saved, onSelect, onToggleSave }) {
@@ -249,26 +232,19 @@ function ListCard({ job, active, saved, onSelect, onToggleSave }) {
   const type = jobType(job.contract_time, job.contract_type);
   const salary = cleanSalary(job.salary);
   const hue = hueFor(job.company);
-  const stale = stalenessMessage(job.fetched_at);
 
   return (
     <div
       className={`aj-lc ${active ? "is-active" : ""}`}
       onClick={() => onSelect(job)}
-      role="button"
-      tabIndex={0}
-      onKeyDown={(e) =>
-        (e.key === "Enter" || e.key === " ") &&
-        (e.preventDefault(), onSelect(job))
-      }
     >
       <div className="aj-lc-top">
         <div
           className="aj-logo"
           style={{
             background: `linear-gradient(135deg, hsla(${hue},70%,60%,.18), hsla(${hue + 40},70%,55%,.18))`,
-            borderColor: `hsla(${hue},70%,60%,.35)`,
             color: `hsl(${hue},75%,72%)`,
+            borderColor: `hsla(${hue},70%,60%,.35)`,
           }}
         >
           {job.company?.[0]?.toUpperCase() || "?"}
@@ -279,11 +255,8 @@ function ListCard({ job, active, saved, onSelect, onToggleSave }) {
             e.stopPropagation();
             onToggleSave(job);
           }}
-          aria-pressed={saved}
-          aria-label={saved ? "Remove from saved" : "Save role"}
-          title={saved ? "Saved" : "Save"}
         >
-          <Bookmark filled={saved} />
+          {Ic.bookmark(saved)}
         </button>
       </div>
       <div className="aj-lc-title">{job.title}</div>
@@ -293,7 +266,7 @@ function ListCard({ job, active, saved, onSelect, onToggleSave }) {
       <div className="aj-lc-badges">
         {job.visa_sponsor && (
           <span className="aj-badge aj-badge--verified">
-            <ShieldCheck size={10} /> Sponsor
+            {Ic.shield()} Sponsor
           </span>
         )}
         {salary && salary !== "Salary not specified" && (
@@ -305,18 +278,12 @@ function ListCard({ job, active, saved, onSelect, onToggleSave }) {
             {workModeLabel(job.work_mode)}
           </span>
         )}
-        {stale && (
-          <span className="aj-badge aj-badge--stale">⚠ May be filled</span>
-        )}
       </div>
       <div className="aj-lc-posted-row">
         {posted && (
           <div className="aj-lc-posted">
-            <Clock size={11} /> {posted}
+            {Ic.clock()} {posted}
           </div>
-        )}
-        {job.savedAt && (
-          <div className="aj-lc-saved">{savedAgo(job.savedAt)}</div>
         )}
       </div>
     </div>
@@ -324,28 +291,45 @@ function ListCard({ job, active, saved, onSelect, onToggleSave }) {
 }
 
 // ── Detail panel (the in-app description view) ────────────────
-function Detail({ job, saved, onToggleSave, onClose }) {
+function Detail({ job, saved, onToggleSave, onClose, onScan, onNavigate }) {
+  // UNIQUE FEATURE: Application Intelligence Dashboard when empty
   if (!job) {
     return (
-      <div className="aj-detail-empty">
-        <div className="aj-detail-empty-ic">📋</div>
-        <div className="aj-detail-empty-t">
-          Select a role to see the details
+      <div className="aj-detail-empty fade-in">
+        <div className="aj-empty-card">
+          <div className="aj-empty-ic">📡</div>
+          <h3 className="aj-empty-h">Select a role to view intelligence</h3>
+          <p className="aj-empty-p">
+            We map descriptions directly against the Home Office register to
+            verify sponsorship viability.
+          </p>
         </div>
-        <div className="aj-detail-empty-s">
-          Full description, salary, and whether they can sponsor your visa — all
-          in one place.
+        <div className="aj-empty-tips">
+          <h4>International Student Strategy</h4>
+          <ul>
+            <li>
+              <strong>Don't just apply online:</strong> The ATS will filter out
+              international passports. Find the hiring manager on LinkedIn.
+            </li>
+            <li>
+              <strong>The Coach is your secret weapon:</strong> Use the "Draft
+              Networking Message" button inside any job to get an instant,
+              tailored outreach script.
+            </li>
+            <li>
+              <strong>Scan before applying:</strong> Use the ATS Scanner to
+              ensure your CV matches the semantic keywords of the job.
+            </li>
+          </ul>
         </div>
       </div>
     );
   }
 
-  const posted = postedAgo(job.created);
   const type = jobType(job.contract_time, job.contract_type);
   const salary = cleanSalary(job.salary);
   const hue = hueFor(job.company);
   const hasDesc = !!(job.description && job.description.trim());
-  const stale = stalenessMessage(job.fetched_at);
   const paras = hasDesc
     ? job.description
         .split(/\n+/)
@@ -353,10 +337,17 @@ function Detail({ job, saved, onToggleSave, onClose }) {
         .filter(Boolean)
     : [];
 
+  // RARE FEATURE: The Backdoor Application (Networking Bridge)
+  const handleNetworkBridge = () => {
+    const prompt = `I want to apply for the ${job.title} role at ${job.company}. Write a highly-tailored, 75-word LinkedIn connection request to the hiring manager. I am an international student looking for sponsorship. Make it sound professional, confident, and focus on value, not begging for a visa.`;
+    sessionStorage.setItem("arivo_pending_coach_prompt", prompt);
+    if (onNavigate) onNavigate("chat");
+  };
+
   return (
-    <div className="aj-detail-inner">
+    <div className="aj-detail-inner fade-in">
       <button className="aj-detail-back" onClick={onClose}>
-        <Back /> Back to list
+        {Ic.back()} Back
       </button>
 
       <div className="aj-detail-head">
@@ -364,7 +355,6 @@ function Detail({ job, saved, onToggleSave, onClose }) {
           className="aj-logo aj-logo-lg"
           style={{
             background: `linear-gradient(135deg, hsla(${hue},70%,60%,.18), hsla(${hue + 40},70%,55%,.18))`,
-            borderColor: `hsla(${hue},70%,60%,.35)`,
             color: `hsl(${hue},75%,72%)`,
           }}
         >
@@ -393,18 +383,13 @@ function Detail({ job, saved, onToggleSave, onClose }) {
         )}
         {job.work_mode && (
           <div className="aj-fact">
-            <div className="aj-fact-lbl">Work mode</div>
+            <div className="aj-fact-lbl">Mode</div>
             <div className="aj-fact-val">{workModeLabel(job.work_mode)}</div>
-          </div>
-        )}
-        {posted && (
-          <div className="aj-fact">
-            <div className="aj-fact-lbl">Posted</div>
-            <div className="aj-fact-val">{posted.replace("Posted ", "")}</div>
           </div>
         )}
       </div>
 
+      {/* THE $100M ACTION BAR */}
       <div className="aj-detail-actions">
         {job.url && (
           <a
@@ -413,154 +398,164 @@ function Detail({ job, saved, onToggleSave, onClose }) {
             target="_blank"
             rel="noreferrer"
           >
-            Apply on employer site <Arrow />
+            Apply Direct {Ic.arrow()}
           </a>
         )}
+
+        {/* NEW FEATURE: Networking Bridge */}
+        <button className="aj-network-btn" onClick={handleNetworkBridge}>
+          {Ic.sparkle()} Draft Networking Message
+        </button>
+
+        {hasDesc && (
+          <button className="aj-scan" onClick={() => onScan(job)}>
+            {Ic.scan()} Scan CV
+          </button>
+        )}
+
         <button
-          className={`aj-save ${saved ? "is-saved" : ""}`}
+          className={`aj-save-btn ${saved ? "is-saved" : ""}`}
           onClick={() => onToggleSave(job)}
-          aria-pressed={saved}
         >
-          <Bookmark filled={saved} /> {saved ? "Saved" : "Save"}
+          {Ic.bookmark(saved)} {saved ? "Saved" : "Save"}
         </button>
       </div>
 
-      {job.savedAt && (
-        <div className="aj-saved-fact">
-          <Bookmark filled /> {savedAgo(job.savedAt)}
-        </div>
-      )}
-
-      {stale && (
-        <div className="aj-stale-banner">
-          <span className="aj-stale-ic">⚠</span>
-          <span>{stale}</span>
-        </div>
-      )}
-
       <div className={`aj-visa ${job.visa_sponsor ? "is-ok" : "is-unknown"}`}>
-        <div className="aj-visa-ic">
-          {job.visa_sponsor ? <ShieldCheck size={16} /> : "?"}
-        </div>
+        <div className="aj-visa-ic">{job.visa_sponsor ? Ic.shield() : "?"}</div>
         <div>
           <div className="aj-visa-t">
             {job.visa_sponsor
-              ? "This company can sponsor your visa"
-              : "Sponsorship not confirmed"}
+              ? "Verified Tier 2 Sponsor"
+              : "Sponsorship unconfirmed"}
           </div>
           <div className="aj-visa-s">
             {job.visa_sponsor
-              ? `${job.company} is on the UK government's official Skilled Worker register — that means they're licensed to sponsor a work visa for an international hire.`
-              : `We couldn't match ${job.company} on the official sponsor register. They might still sponsor — it's worth confirming with them directly before you apply.`}
+              ? `${job.company} is on the official UK Skilled Worker register.`
+              : `We couldn't verify ${job.company} on the official sponsor register.`}
           </div>
         </div>
       </div>
 
-      {job.work_mode && job.work_mode !== "onsite" && (
-        <div className="aj-inferred-note">
-          Work mode is inferred from the listing text, not a guaranteed field —
-          worth confirming with the employer.
-        </div>
-      )}
-
-      <div className="aj-section-h">About this role</div>
+      <div className="aj-section-h">Role Description</div>
       {hasDesc ? (
         <div className="aj-desc-body">
           {paras.map((p, i) => (
             <p key={i}>{p}</p>
           ))}
-          {job.description.length >= 290 && (
-            <p className="aj-desc-more">
-              This is a preview from the listing. The full job description is on
-              the employer's site.
-            </p>
-          )}
         </div>
       ) : (
         <div className="aj-desc-body">
-          <p>
-            No description was provided for this role. Open the full listing to
-            read more.
-          </p>
+          <p>No description provided. Click Apply to view on employer site.</p>
         </div>
-      )}
-
-      {job.url && (
-        <a
-          className="aj-desc-link"
-          href={job.url}
-          target="_blank"
-          rel="noreferrer"
-        >
-          View full listing <Arrow />
-        </a>
       )}
     </div>
   );
 }
 
-function Jobs() {
-  const [query, setQuery] = useState("");
-  const [jobs, setJobs] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [searched, setSearched] = useState(false);
-  const [error, setError] = useState(false);
-
-  const [visaOnly, setVisaOnly] = useState(false);
-  const [sortBy, setSortBy] = useState("match");
-  const [tab, setTab] = useState("results"); // results | saved
-
-  // Filters
-  const [showFilters, setShowFilters] = useState(false);
-  const [location, setLocation] = useState("");
+// ─────────────────────────────────────────────────────────────
+// MAIN JOBS COMPONENT
+// ─────────────────────────────────────────────────────────────
+export default function Jobs({ onNavigate }) {
+  // ESLINT FIX: Initialize all default values dynamically inside useState
+  const [query, setQuery] = useState(() => {
+    const context = readLS("arivo_pf_context", {});
+    return context.targetRole || "Software Engineer";
+  });
+  const [location, setLocation] = useState("London");
   const [category, setCategory] = useState("");
   const [categories, setCategories] = useState([]);
-  const [employmentType, setEmploymentType] = useState("any"); // any | full | part
-  const [workMode, setWorkMode] = useState("any"); // any | remote | hybrid | onsite
 
+  // ESLINT FIX: Pre-set loading and searched to true for the Auto-Feed
+  const [loading, setLoading] = useState(true);
+  const [searched, setSearched] = useState(true);
+  const [error, setError] = useState(false);
+  const [jobs, setJobs] = useState([]);
+
+  const [visaOnly, setVisaOnly] = useState(false);
+  const [sortBy, setSortBy] = useState("sponsors");
   const [savedJobs, setSavedJobs] = useState(() => readLS(SAVED_KEY, []));
   const [recent, setRecent] = useState(() => readLS(RECENT_KEY, []));
   const [selectedKey, setSelectedKey] = useState(null);
 
-  // Load the real Adzuna category list once, so Industry never guesses
+  // ZERO-CLICK AUTO-FEED FEATURE (ESLint Strict Fix)
+  useEffect(() => {
+    let isMounted = true;
+    const fetchInitialJobs = async () => {
+      try {
+        const res = await axios.post(
+          `${import.meta.env.VITE_AI_URL}/jobs/search`,
+          {
+            query: query,
+            location: location,
+            category: category || undefined,
+          },
+        );
+
+        if (isMounted) {
+          setJobs(res.data.jobs || []);
+          const next = [
+            query,
+            ...recent.filter((r) => r.toLowerCase() !== query.toLowerCase()),
+          ].slice(0, 5);
+          setRecent(next);
+          writeLS(RECENT_KEY, next);
+          setLoading(false);
+        }
+      } catch (err) {
+        if (isMounted) {
+          console.warn("Auto-feed error:", err);
+          setError(true);
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchInitialJobs();
+    return () => {
+      isMounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     axios
       .get(`${import.meta.env.VITE_AI_URL}/jobs/categories`)
       .then((res) => setCategories(res.data?.categories || []))
-      .catch(() => setCategories([]));
+      .catch((err) => {
+        console.warn("Categories fetch error:", err);
+        setCategories([]);
+      });
   }, []);
 
-  const runSearch = async (term) => {
-    const q = (term ?? query).trim();
+  const runSearch = async (term = query, loc = location) => {
+    const q = term.trim();
     if (!q) return;
     setQuery(q);
-    setTab("results");
+    setLocation(loc);
     setLoading(true);
     setSearched(true);
     setError(false);
-    setJobs([]);
     setSelectedKey(null);
+
     try {
       const res = await axios.post(
         `${import.meta.env.VITE_AI_URL}/jobs/search`,
         {
           query: q,
-          location: location.trim() || "london",
+          location: loc,
           category: category || undefined,
-          full_time: employmentType === "full" ? true : undefined,
-          part_time: employmentType === "part" ? true : undefined,
-          work_mode: workMode === "any" ? undefined : workMode,
         },
       );
-      const list = res.data.jobs || [];
-      setJobs(list);
+      setJobs(res.data.jobs || []);
       const next = [
         q,
         ...recent.filter((r) => r.toLowerCase() !== q.toLowerCase()),
-      ].slice(0, 6);
+      ].slice(0, 5);
       setRecent(next);
       writeLS(RECENT_KEY, next);
-    } catch {
+    } catch (err) {
+      console.warn("Manual search error:", err);
       setError(true);
     }
     setLoading(false);
@@ -575,594 +570,328 @@ function Jobs() {
     writeLS(SAVED_KEY, next);
   };
 
-  const clearAll = () => {
-    setQuery("");
-    setJobs([]);
-    setSearched(false);
-    setError(false);
-    setTab("results");
-    setSelectedKey(null);
+  const handleScanMatch = (job) => {
+    const payload = {
+      title: job.title,
+      company: job.company,
+      description: job.description,
+      isPartial: true,
+    };
+    sessionStorage.setItem("arivo_pending_scan", JSON.stringify(payload));
+    if (onNavigate) onNavigate("ats");
   };
 
-  const activeFilterCount =
-    (location.trim() ? 1 : 0) +
-    (category ? 1 : 0) +
-    (employmentType !== "any" ? 1 : 0) +
-    (workMode !== "any" ? 1 : 0);
-
-  const base = tab === "saved" ? savedJobs : jobs;
-  const filtered = visaOnly ? base.filter((j) => j.visa_sponsor) : base;
+  const filtered = visaOnly ? jobs.filter((j) => j.visa_sponsor) : jobs;
   const displayed =
     sortBy === "sponsors"
       ? [...filtered].sort(
           (a, b) => (b.visa_sponsor ? 1 : 0) - (a.visa_sponsor ? 1 : 0),
         )
       : filtered;
-
   const active =
     displayed.find((j) => jobKey(j) === selectedKey) || displayed[0] || null;
 
-  const showSplit =
-    (tab === "saved" && savedJobs.length > 0) ||
-    (tab === "results" && searched && !loading && !error && jobs.length > 0);
-
-  const showDiscovery = tab === "results" && !searched && !loading;
-
   return (
-    <div className="aj">
+    <div className="aj-wrapper">
       <style>{styles}</style>
 
-      <header className="aj-head">
-        <h1 className="aj-title">Find your next role</h1>
-        <p className="aj-sub">
-          Search London roles in any field — every listing checked for visa
-          sponsorship against the official Home Office register.
-        </p>
-      </header>
-
-      <div className="aj-searchbar">
-        <span className="aj-search-ic">
-          <SearchIcon />
-        </span>
-        <input
-          className="aj-input"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && runSearch()}
-          placeholder="e.g. teacher, nurse, ML engineer, finance analyst, lawyer…"
-          aria-label="Search for roles"
-        />
-        {query && (
-          <button
-            className="aj-clear"
-            onClick={clearAll}
-            aria-label="Clear search"
-          >
-            <Close />
-          </button>
-        )}
-        <button
-          className={`aj-filter-toggle ${showFilters ? "is-open" : ""}`}
-          onClick={() => setShowFilters((v) => !v)}
-          aria-expanded={showFilters}
-        >
-          <Filter />
-          {activeFilterCount > 0 && (
-            <span className="aj-filter-count">{activeFilterCount}</span>
-          )}
-        </button>
-        <button
-          className="aj-go"
-          onClick={() => runSearch()}
-          disabled={loading}
-          aria-label="Search jobs"
-        >
-          {loading ? "Searching…" : "Search"}
-        </button>
-      </div>
-
-      {showFilters && (
-        <div className="aj-filters">
-          <div className="aj-filter-field">
-            <label className="aj-filter-label">
-              <Pin /> Location
-            </label>
-            <input
-              className="aj-filter-input"
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="London"
-            />
-          </div>
-
-          <div className="aj-filter-field">
-            <label className="aj-filter-label">Industry</label>
-            <select
-              className="aj-filter-select"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-            >
-              <option value="">Every field</option>
-              {categories.map((c) => (
-                <option key={c.tag} value={c.tag}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="aj-filter-field">
-            <label className="aj-filter-label">Type</label>
-            <div className="aj-filter-seg">
-              {[
-                ["any", "Any"],
-                ["full", "Full-time"],
-                ["part", "Part-time"],
-              ].map(([v, l]) => (
-                <button
-                  key={v}
-                  className={employmentType === v ? "is-active" : ""}
-                  onClick={() => setEmploymentType(v)}
-                >
-                  {l}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="aj-filter-field">
-            <label className="aj-filter-label">
-              Work mode
-              <span className="aj-filter-hint">inferred, not guaranteed</span>
-            </label>
-            <div className="aj-filter-seg">
-              {[
-                ["any", "Any"],
-                ["remote", "Remote"],
-                ["hybrid", "Hybrid"],
-                ["onsite", "On-site"],
-              ].map(([v, l]) => (
-                <button
-                  key={v}
-                  className={workMode === v ? "is-active" : ""}
-                  onClick={() => setWorkMode(v)}
-                >
-                  {l}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {activeFilterCount > 0 && (
-            <button
-              className="aj-filter-reset"
-              onClick={() => {
-                setLocation("");
-                setCategory("");
-                setEmploymentType("any");
-                setWorkMode("any");
-              }}
-            >
-              Reset filters
-            </button>
-          )}
-        </div>
-      )}
-
-      {(searched || savedJobs.length > 0) && (
-        <div className="aj-tabs">
-          <div className="aj-tabset">
-            <button
-              className={tab === "results" ? "is-active" : ""}
-              onClick={() => {
-                setTab("results");
-                setSelectedKey(null);
-              }}
-            >
-              Results{jobs.length > 0 ? ` (${jobs.length})` : ""}
-            </button>
-            <button
-              className={tab === "saved" ? "is-active" : ""}
-              onClick={() => {
-                setTab("saved");
-                setSelectedKey(null);
-              }}
-            >
-              Saved{savedJobs.length > 0 ? ` (${savedJobs.length})` : ""}
-            </button>
-          </div>
-          {showSplit && (
-            <div className="aj-controls">
-              <div className="aj-seg" role="group" aria-label="Sort">
-                <button
-                  className={sortBy === "match" ? "is-active" : ""}
-                  onClick={() => setSortBy("match")}
-                >
-                  {tab === "saved" ? "Recently saved" : "Best match"}
-                </button>
-                <button
-                  className={sortBy === "sponsors" ? "is-active" : ""}
-                  onClick={() => setSortBy("sponsors")}
-                >
-                  Sponsors first
-                </button>
-              </div>
-              <button
-                className={`aj-toggle ${visaOnly ? "is-on" : ""}`}
-                onClick={() => setVisaOnly(!visaOnly)}
-                aria-pressed={visaOnly}
-              >
-                <ShieldCheck /> Visa only
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-
-      {showDiscovery && (
-        <>
-          <div className="aj-props">
-            <div className="aj-prop">
-              <div className="aj-prop-ic">
-                <ShieldCheck size={18} />
-              </div>
-              <div className="aj-prop-title">Verified sponsors</div>
-              <div className="aj-prop-sub">
-                Every role checked against the official Home Office register
-              </div>
-            </div>
-            <div className="aj-prop">
-              <div className="aj-prop-ic">
-                <Clock size={18} />
-              </div>
-              <div className="aj-prop-title">Live London jobs</div>
-              <div className="aj-prop-sub">
-                Fresh listings pulled in real time, dated so you skip stale
-                leads
-              </div>
-            </div>
-            <div className="aj-prop">
-              <div className="aj-prop-ic">
-                <SearchIcon size={18} />
-              </div>
-              <div className="aj-prop-title">Every field</div>
-              <div className="aj-prop-sub">
-                Tech, healthcare, finance, law, teaching — not just developers
-              </div>
-            </div>
-          </div>
-
-          {recent.length > 0 && (
-            <section className="aj-block">
-              <div className="aj-block-head">
-                <div className="aj-eyebrow">Recent</div>
-                <button
-                  className="aj-text-btn"
-                  onClick={() => {
-                    setRecent([]);
-                    writeLS(RECENT_KEY, []);
-                  }}
-                >
-                  Clear
-                </button>
-              </div>
-              <div className="aj-chips">
-                {recent.map((term) => (
-                  <button
-                    key={term}
-                    className="aj-chip"
-                    onClick={() => runSearch(term)}
-                  >
-                    {term}
-                  </button>
-                ))}
-              </div>
-            </section>
-          )}
-
-          <section className="aj-block">
-            <div className="aj-eyebrow">Popular searches</div>
-            <div className="aj-chips">
-              {[
-                "ML engineer",
-                "data scientist",
-                "software engineer",
-                "teacher",
-                "nurse",
-                "finance analyst",
-                "product manager",
-                "UX designer",
-                "lawyer",
-                "pharmacist",
-                "data analyst",
-                "DevOps engineer",
-              ].map((term) => (
-                <button
-                  key={term}
-                  className="aj-chip"
-                  onClick={() => runSearch(term)}
-                >
-                  {term}
-                </button>
-              ))}
-            </div>
-          </section>
-        </>
-      )}
-
-      {loading && (
-        <div className="aj-loadwrap" aria-live="polite">
-          <p className="aj-note">
-            Checking the Home Office sponsor register and live listings…
+      <div className="aj-container">
+        <header className="aj-head">
+          <h1 className="aj-title">Market Intelligence Feed</h1>
+          <p className="aj-sub">
+            Auto-calibrated to your profile. Every listing checked against the
+            official Home Office sponsor register.
           </p>
-          <div className="aj-skel-list">
-            {[0, 1, 2, 3].map((i) => (
-              <div className="aj-lc aj-lc--skel" key={i}>
-                <div className="aj-skel aj-skel-logo" />
-                <div
-                  className="aj-skel"
-                  style={{ width: "70%", height: 14, margin: "12px 0 8px" }}
-                />
-                <div
-                  className="aj-skel"
-                  style={{ width: "45%", height: 11, marginBottom: 12 }}
-                />
-                <div
-                  className="aj-skel"
-                  style={{ width: 120, height: 18, borderRadius: 999 }}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        </header>
 
-      {error && !loading && (
-        <div className="aj-state aj-state--error">
-          <div className="aj-state-title">Couldn't reach the job service</div>
-          <div className="aj-state-sub">
-            The search server didn't respond. Make sure it's running, then try
-            again.
+        {/* Search & Filter Bar */}
+        <div className="aj-search-bar">
+          <div className="aj-search-inputs">
+            <div className="aj-input-wrap">
+              {Ic.search()}
+              <input
+                className="aj-input"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && runSearch()}
+                placeholder="Target role..."
+              />
+            </div>
+            <div className="aj-divider"></div>
+            <div className="aj-input-wrap">
+              {Ic.filter()}
+              <input
+                className="aj-input"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && runSearch()}
+                placeholder="London"
+              />
+            </div>
           </div>
-          <button className="aj-retry" onClick={() => runSearch()}>
-            Try again
+          <button
+            className="aj-btn-primary"
+            onClick={() => runSearch()}
+            disabled={loading}
+          >
+            {loading ? "Scanning..." : "Search Market"}
           </button>
         </div>
-      )}
 
-      {!loading &&
-        !error &&
-        ((tab === "results" && searched) || tab === "saved") &&
-        displayed.length === 0 && (
-          <div className="aj-state">
-            <div className="aj-state-title">
-              {tab === "saved"
-                ? "No saved roles yet"
-                : `No roles match “${query}” yet`}
-            </div>
-            <div className="aj-state-sub">
-              {tab === "saved"
-                ? "Tap the bookmark on any role to keep it here for later."
-                : visaOnly
-                  ? "Turn off the visa filter, or try a broader search term."
-                  : "Try a broader term, a different location, or fewer filters."}
-            </div>
+        <div className="aj-controls-row">
+          <div className="aj-tabs">
+            <button
+              className={sortBy === "match" ? "active" : ""}
+              onClick={() => setSortBy("match")}
+            >
+              Relevance
+            </button>
+            <button
+              className={sortBy === "sponsors" ? "active" : ""}
+              onClick={() => setSortBy("sponsors")}
+            >
+              Sponsors First
+            </button>
           </div>
-        )}
+          <button
+            className={`aj-visa-toggle ${visaOnly ? "is-on" : ""}`}
+            onClick={() => setVisaOnly(!visaOnly)}
+          >
+            {Ic.shield()} Visa Sponsors Only
+          </button>
+        </div>
 
-      {showSplit && displayed.length > 0 && (
-        <div className="aj-split">
-          <div className="aj-list">
-            {displayed.map((job) => (
-              <ListCard
-                key={jobKey(job)}
-                job={job}
-                active={active && jobKey(active) === jobKey(job)}
-                saved={isSaved(job)}
-                onSelect={(j) => setSelectedKey(jobKey(j))}
-                onToggleSave={toggleSave}
-              />
-            ))}
-            <div className="aj-end">
-              {displayed.length} {displayed.length === 1 ? "role" : "roles"}{" "}
-              shown
-            </div>
+        {/* Main Split View */}
+        <div className="aj-split-view">
+          {/* Left Column: Job List */}
+          <div className="aj-list-col">
+            {loading ? (
+              <div className="aj-loading">
+                <div className="aj-spinner"></div>
+                <p>Querying live endpoints & Home Office register...</p>
+              </div>
+            ) : error ? (
+              <div className="aj-msg-card">
+                <h3>Backend Disconnected</h3>
+                <p>
+                  Unable to reach the Python APIs. Please ensure the server is
+                  running on port 8000.
+                </p>
+                <button className="aj-btn-primary" onClick={() => runSearch()}>
+                  Retry
+                </button>
+              </div>
+            ) : displayed.length === 0 ? (
+              <div className="aj-msg-card">
+                <h3>No roles found</h3>
+                <p>
+                  Try adjusting your search terms or expanding your location.
+                </p>
+              </div>
+            ) : (
+              <div className="aj-feed">
+                {displayed.map((job) => (
+                  <ListCard
+                    key={jobKey(job)}
+                    job={job}
+                    active={active && jobKey(active) === jobKey(job)}
+                    saved={isSaved(job)}
+                    onSelect={(j) => setSelectedKey(jobKey(j))}
+                    onToggleSave={toggleSave}
+                  />
+                ))}
+                <div className="aj-feed-end">End of results for "{query}"</div>
+              </div>
+            )}
           </div>
 
-          <div className={`aj-detail ${selectedKey ? "is-open" : ""}`}>
+          {/* Right Column: Detail Panel */}
+          <div
+            className={`aj-detail-col ${selectedKey || (displayed.length > 0 && active) ? "is-open" : ""}`}
+          >
             <Detail
               job={active}
               saved={active ? isSaved(active) : false}
               onToggleSave={toggleSave}
               onClose={() => setSelectedKey(null)}
+              onScan={handleScanMatch}
+              onNavigate={onNavigate}
             />
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
+// ─────────────────────────────────────────────────────────────
+// ENTERPRISE CSS (Mobile Optimized)
+// ─────────────────────────────────────────────────────────────
 const styles = `
-.aj {
-  --bg:#08080f; --panel:rgba(255,255,255,0.025); --panel-2:rgba(255,255,255,0.045);
-  --border:rgba(255,255,255,0.06); --border-hi:rgba(124,111,239,0.4);
-  --pur:#7c6fef; --pur2:#9b6ef3; --mag:#e879f9; --teal:#00d4aa; --gold:#f5c451;
-  --text:#f0f0ff; --text-2:#8888aa; --text-3:#55556a; --verify:#00d4aa;
-  background:var(--bg); min-height:calc(100vh - 56px); color:var(--text);
-  font-family:'Inter', system-ui, -apple-system, sans-serif;
-  padding:2rem clamp(1.5rem,4vw,4.5rem) 4rem;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --bg: #08080f; --surface: #0f0f18; --surface-2: rgba(255,255,255,0.03);
+  --border: rgba(255,255,255,0.08); --border-hi: rgba(124, 111, 239, 0.4);
+  --pur: #7c6fef; --pur2: #9b6ef3; --teal: #00d4aa; --gold: #f5c451; --red: #ff7a7a;
+  --tx: #f0f0ff; --tx2: #8888aa; --tx3: #55556a;
 }
-.aj button:focus-visible, .aj a:focus-visible, .aj [role=button]:focus-visible { outline:2px solid var(--pur); outline-offset:2px; }
 
-.aj-head { margin-bottom:1.5rem; }
-.aj-title { margin:0 0 7px; font-size:clamp(1.7rem,2.6vw,2.2rem); font-weight:800; letter-spacing:-0.03em; line-height:1.1; }
-.aj-sub { margin:0; max-width:560px; font-size:13.5px; line-height:1.55; color:var(--text-2); }
+.aj-wrapper { background: var(--bg); min-height: calc(100vh - 56px); color: var(--tx); font-family: 'Inter', system-ui, sans-serif; }
+.aj-wrapper * { box-sizing: border-box; }
 
-.aj-searchbar { display:flex; align-items:center; gap:8px; max-width:820px; background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:6px 6px 6px 16px; transition:border-color .2s, box-shadow .2s; }
-.aj-searchbar:focus-within { border-color:var(--pur); box-shadow:0 0 0 4px rgba(124,111,239,.15); }
-.aj-search-ic { display:flex; color:var(--text-3); transition:color .2s; }
-.aj-searchbar:focus-within .aj-search-ic { color:var(--pur); }
-.aj-input { flex:1; min-width:0; background:transparent; border:none; outline:none; color:var(--text); font-size:15px; padding:10px 0; }
-.aj-input::placeholder { color:#5a5a72; }
-.aj-clear { display:flex; align-items:center; justify-content:center; width:30px; height:30px; border:none; background:transparent; color:var(--text-3); cursor:pointer; border-radius:8px; transition:all .15s; }
-.aj-clear:hover { color:var(--text); background:rgba(255,255,255,.06); }
-.aj-filter-toggle { position:relative; display:flex; align-items:center; justify-content:center; width:38px; height:38px; flex-shrink:0; border-radius:10px; border:1px solid var(--border); background:transparent; color:var(--text-2); cursor:pointer; transition:all .18s; }
-.aj-filter-toggle:hover, .aj-filter-toggle.is-open { color:var(--text); border-color:var(--border-hi); background:rgba(124,111,239,.08); }
-.aj-filter-count { position:absolute; top:-5px; right:-5px; width:16px; height:16px; border-radius:50%; background:var(--pur); color:#fff; font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center; }
-.aj-go { flex-shrink:0; padding:10px 22px; border:none; border-radius:10px; background:linear-gradient(135deg,var(--pur),var(--pur2)); color:#fff; font-size:13.5px; font-weight:700; cursor:pointer; transition:filter .18s, transform .12s; }
-.aj-go:hover:not(:disabled) { filter:brightness(1.12); }
-.aj-go:active:not(:disabled) { transform:scale(.97); }
-.aj-go:disabled { opacity:.6; cursor:not-allowed; }
+.aj-container { max-width: 1400px; margin: 0 auto; padding: 40px 24px; }
 
-/* Filters panel */
-.aj-filters { display:flex; flex-wrap:wrap; align-items:flex-end; gap:14px; max-width:820px; margin-top:12px; padding:16px; background:var(--panel); border:1px solid var(--border); border-radius:14px; animation:aj-open .18s ease; }
-.aj-filter-field { display:flex; flex-direction:column; gap:6px; min-width:130px; }
-.aj-filter-label { display:flex; align-items:center; gap:5px; font-size:11.5px; font-weight:600; color:var(--text-2); }
-.aj-filter-hint { font-size:10px; font-weight:500; color:var(--text-3); font-style:italic; }
-.aj-filter-input { padding:8px 12px; border-radius:9px; background:rgba(0,0,0,0.2); border:1px solid var(--border); color:var(--text); font-size:13px; outline:none; font-family:inherit; }
-.aj-filter-input:focus { border-color:var(--pur); }
-.aj-filter-select { padding:8px 12px; border-radius:9px; background:rgba(0,0,0,0.2); border:1px solid var(--border); color:var(--text); font-size:13px; outline:none; font-family:inherit; cursor:pointer; max-width:180px; }
-.aj-filter-select:focus { border-color:var(--pur); }
-.aj-filter-seg { display:inline-flex; background:rgba(0,0,0,0.2); border:1px solid var(--border); border-radius:9px; padding:3px; }
-.aj-filter-seg button { padding:6px 10px; border:none; background:transparent; color:var(--text-2); font-size:12px; font-weight:600; border-radius:6px; cursor:pointer; transition:all .15s; white-space:nowrap; }
-.aj-filter-seg button:hover { color:var(--text); }
-.aj-filter-seg button.is-active { background:rgba(124,111,239,.22); color:var(--text); }
-.aj-filter-reset { align-self:center; margin-left:auto; padding:8px 14px; border:1px solid var(--border); background:transparent; color:var(--text-3); font-size:12px; border-radius:9px; cursor:pointer; transition:all .15s; }
-.aj-filter-reset:hover { color:var(--text); border-color:var(--border-hi); }
-@keyframes aj-open { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
+/* Header */
+.aj-head { margin-bottom: 32px; }
+.aj-title { font-size: clamp(24px, 4vw, 32px); font-weight: 800; letter-spacing: -0.02em; margin: 0 0 8px; }
+.aj-sub { font-size: 15px; color: var(--tx2); margin: 0; max-width: 600px; line-height: 1.5; }
 
-.aj-tabs { display:flex; align-items:center; justify-content:space-between; gap:14px; margin:1.5rem 0 1.25rem; flex-wrap:wrap; }
-.aj-tabset { display:inline-flex; background:var(--panel); border:1px solid var(--border); border-radius:11px; padding:4px; }
-.aj-tabset button { padding:8px 16px; border:none; background:transparent; color:var(--text-2); font-size:13px; font-weight:600; border-radius:8px; cursor:pointer; transition:all .15s; }
-.aj-tabset button:hover { color:var(--text); }
-.aj-tabset button.is-active { background:linear-gradient(135deg,var(--pur),var(--pur2)); color:#fff; }
-.aj-controls { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
-.aj-seg { display:inline-flex; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:3px; }
-.aj-seg button { padding:6px 12px; border:none; background:transparent; color:var(--text-2); font-size:12px; font-weight:600; border-radius:7px; cursor:pointer; transition:all .15s; }
-.aj-seg button:hover { color:var(--text); }
-.aj-seg button.is-active { background:rgba(124,111,239,.2); color:var(--text); }
-.aj-toggle { display:inline-flex; align-items:center; gap:7px; padding:7px 14px; border-radius:999px; cursor:pointer; background:transparent; border:1px solid var(--verify); color:var(--verify); font-size:12.5px; font-weight:600; transition:all .18s; }
-.aj-toggle:hover { background:rgba(0,212,170,.10); }
-.aj-toggle.is-on { background:var(--verify); color:#04201b; border-color:transparent; }
+/* Search Bar */
+.aj-search-bar { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+.aj-search-inputs { flex: 1; display: flex; align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 0 16px; transition: border-color 0.2s; }
+.aj-search-inputs:focus-within { border-color: var(--pur); box-shadow: 0 0 0 3px rgba(124, 111, 239, 0.15); }
+.aj-input-wrap { display: flex; align-items: center; gap: 10px; flex: 1; color: var(--tx3); padding: 12px 0; }
+.aj-input { flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--tx); font-size: 15px; font-family: inherit; }
+.aj-input::placeholder { color: var(--tx3); }
+.aj-divider { width: 1px; height: 24px; background: var(--border); margin: 0 16px; }
 
-.aj-props { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin-top:1.75rem; max-width:960px; }
-.aj-prop { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:20px; transition:border-color .18s, transform .18s; }
-.aj-prop:hover { border-color:var(--border-hi); transform:translateY(-2px); }
-.aj-prop-ic { width:40px; height:40px; border-radius:10px; display:flex; align-items:center; justify-content:center; color:var(--pur); background:rgba(124,111,239,.12); border:1px solid rgba(124,111,239,.22); margin-bottom:13px; }
-.aj-prop-title { font-size:14px; font-weight:700; margin-bottom:5px; }
-.aj-prop-sub { font-size:12px; color:var(--text-3); line-height:1.5; }
+.aj-btn-primary { background: linear-gradient(135deg, var(--pur), var(--pur2)); color: #fff; border: none; padding: 0 32px; border-radius: 14px; font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.2s; white-space: nowrap; height: 48px; }
+.aj-btn-primary:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 8px 20px rgba(124, 111, 239, 0.3); }
+.aj-btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
-.aj-block { margin-top:1.75rem; max-width:960px; }
-.aj-block-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:11px; }
-.aj-eyebrow { font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--text-3); }
-.aj-text-btn { border:none; background:none; color:var(--text-3); font-size:11px; cursor:pointer; transition:color .15s; }
-.aj-text-btn:hover { color:var(--text); }
-.aj-chips { display:flex; flex-wrap:wrap; gap:8px; }
-.aj-chip { padding:8px 15px; border-radius:999px; cursor:pointer; background:transparent; border:1px solid var(--border); color:var(--text-2); font-size:12.5px; transition:all .16s; }
-.aj-chip:hover { border-color:var(--border-hi); color:var(--text); background:rgba(124,111,239,.08); transform:translateY(-1px); }
+/* Controls */
+.aj-controls-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px; }
+.aj-tabs { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 4px; }
+.aj-tabs button { background: transparent; border: none; padding: 8px 16px; border-radius: 6px; color: var(--tx2); font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+.aj-tabs button:hover { color: var(--tx); }
+.aj-tabs button.active { background: rgba(124, 111, 239, 0.15); color: var(--pur); }
+.aj-visa-toggle { display: flex; align-items: center; gap: 8px; background: transparent; border: 1px solid var(--teal); color: var(--teal); padding: 8px 16px; border-radius: 99px; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+.aj-visa-toggle:hover { background: rgba(0, 212, 170, 0.1); }
+.aj-visa-toggle.is-on { background: var(--teal); color: #000; }
 
-.aj-split { display:grid; grid-template-columns:minmax(340px, 420px) 1fr; gap:16px; align-items:start; }
-.aj-list { display:flex; flex-direction:column; gap:10px; }
+/* Split View Architecture */
+.aj-split-view { display: grid; grid-template-columns: 420px 1fr; gap: 24px; align-items: start; }
+.aj-list-col { display: flex; flex-direction: column; gap: 12px; height: calc(100vh - 280px); overflow-y: auto; padding-right: 8px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
 
-.aj-lc { background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:16px; cursor:pointer; transition:all .18s; }
-.aj-lc:hover { border-color:var(--border-hi); background:var(--panel-2); }
-.aj-lc.is-active { border-color:var(--pur); background:rgba(124,111,239,.08); box-shadow:0 0 0 1px var(--pur) inset; }
-.aj-lc-top { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:12px; }
-.aj-logo { width:42px; height:42px; flex-shrink:0; border-radius:11px; display:flex; align-items:center; justify-content:center; border:1px solid; font-size:16px; font-weight:700; }
-.aj-logo-lg { width:54px; height:54px; border-radius:14px; font-size:21px; }
-.aj-save-sm { display:flex; align-items:center; justify-content:center; width:32px; height:32px; border:1px solid var(--border); background:transparent; color:var(--text-3); border-radius:9px; cursor:pointer; transition:all .18s; }
-.aj-save-sm:hover { color:var(--text); border-color:var(--border-hi); }
-.aj-save-sm.is-saved { color:var(--pur); border-color:var(--border-hi); background:rgba(124,111,239,.12); }
-.aj-lc-title { font-size:14.5px; font-weight:700; color:var(--text); margin-bottom:3px; line-height:1.3; }
-.aj-lc-meta { font-size:12.5px; color:var(--text-2); margin-bottom:10px; }
-.aj-lc-badges { display:flex; gap:6px; flex-wrap:wrap; }
-.aj-badge { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:600; padding:3px 9px; border-radius:999px; }
-.aj-badge--verified { background:rgba(0,212,170,.14); color:var(--verify); border:1px solid rgba(0,212,170,.4); }
-.aj-badge--salary { background:rgba(124,111,239,.14); color:#a89cf7; border:1px solid rgba(124,111,239,.3); }
-.aj-badge--type { background:rgba(255,255,255,.05); color:var(--text-2); border:1px solid rgba(255,255,255,.1); }
-.aj-badge--mode { background:rgba(245,196,81,.12); color:var(--gold); border:1px solid rgba(245,196,81,.3); }
-.aj-badge--stale { background:rgba(245,196,81,.1); color:var(--gold); border:1px solid rgba(245,196,81,.3); }
-.aj-lc-posted-row { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:10px; }
-.aj-lc-posted { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--text-3); }
-.aj-lc-saved { font-size:11px; color:var(--text-3); }
+/* Job Cards */
+.aj-lc { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 20px; cursor: pointer; transition: all 0.2s; }
+.aj-lc:hover { border-color: var(--border-hi); background: var(--surface-2); transform: translateY(-2px); }
+.aj-lc.is-active { border-color: var(--pur); background: rgba(124, 111, 239, 0.08); box-shadow: inset 0 0 0 1px var(--pur); transform: translateY(0); }
+.aj-lc-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+.aj-logo { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 800; border: 1px solid; flex-shrink: 0; }
+.aj-save-sm { background: transparent; border: 1px solid var(--border); border-radius: 8px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; color: var(--tx3); cursor: pointer; transition: all 0.2s; }
+.aj-save-sm:hover { color: var(--tx); border-color: var(--tx2); }
+.aj-save-sm.is-saved { color: var(--pur); border-color: var(--pur); background: rgba(124, 111, 239, 0.1); }
+.aj-lc-title { font-size: 16px; font-weight: 700; color: var(--tx); margin-bottom: 4px; line-height: 1.3; }
+.aj-lc-meta { font-size: 13px; color: var(--tx2); margin-bottom: 12px; }
+.aj-lc-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.aj-badge { font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px; display: flex; align-items: center; gap: 4px; }
+.aj-badge--verified { background: rgba(0, 212, 170, 0.1); color: var(--teal); border: 1px solid rgba(0, 212, 170, 0.2); }
+.aj-badge--salary { background: rgba(124, 111, 239, 0.1); color: #b0a8ff; border: 1px solid rgba(124, 111, 239, 0.2); }
+.aj-badge--type { background: rgba(255, 255, 255, 0.05); color: var(--tx2); border: 1px solid var(--border); }
+.aj-badge--mode { background: rgba(245, 196, 81, 0.1); color: var(--gold); border: 1px solid rgba(245, 196, 81, 0.2); }
+.aj-lc-posted-row { font-size: 11.5px; color: var(--tx3); display: flex; align-items: center; gap: 6px; }
 
-.aj-detail { position:sticky; top:74px; background:var(--panel); border:1px solid var(--border); border-radius:18px; min-height:400px; }
-.aj-detail-inner { padding:28px; }
-.aj-detail-back { display:none; align-items:center; gap:7px; border:none; background:none; color:var(--text-2); font-size:13px; font-weight:600; cursor:pointer; margin-bottom:16px; padding:0; }
-.aj-detail-head { display:flex; gap:16px; align-items:center; margin-bottom:22px; }
-.aj-detail-title { font-size:21px; font-weight:800; letter-spacing:-0.02em; margin:0 0 5px; line-height:1.25; }
-.aj-detail-company { font-size:13.5px; color:var(--text-2); }
+/* Detail Column */
+.aj-detail-col { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; height: calc(100vh - 280px); overflow-y: auto; position: sticky; top: 140px; scrollbar-width: none; }
+.aj-detail-inner { padding: 40px; }
+.aj-detail-back { display: none; }
 
-.aj-facts { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px; }
-.aj-fact { background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:12px; padding:11px 16px; min-width:90px; }
-.aj-fact-lbl { font-size:10.5px; color:var(--text-3); text-transform:uppercase; letter-spacing:0.06em; font-weight:600; margin-bottom:3px; }
-.aj-fact-val { font-size:14px; font-weight:700; color:var(--text); }
+/* Empty States */
+.aj-detail-empty { padding: 40px; display: flex; flex-direction: column; gap: 24px; height: 100%; justify-content: center; }
+.aj-empty-card { background: rgba(124, 111, 239, 0.05); border: 1px solid rgba(124, 111, 239, 0.2); border-radius: 16px; padding: 32px; text-align: center; }
+.aj-empty-ic { font-size: 32px; margin-bottom: 16px; }
+.aj-empty-h { font-size: 18px; font-weight: 700; margin: 0 0 8px; color: var(--tx); }
+.aj-empty-p { font-size: 14px; color: var(--tx2); margin: 0; line-height: 1.5; }
+.aj-empty-tips { background: var(--bg); border: 1px solid var(--border); border-radius: 16px; padding: 24px; }
+.aj-empty-tips h4 { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--pur); margin: 0 0 16px; }
+.aj-empty-tips ul { margin: 0; padding-left: 20px; color: var(--tx2); font-size: 13.5px; line-height: 1.6; display: flex; flex-direction: column; gap: 12px; }
+.aj-empty-tips strong { color: var(--tx); }
 
-.aj-detail-actions { display:flex; gap:10px; margin-bottom:22px; flex-wrap:wrap; }
-.aj-apply { display:inline-flex; align-items:center; gap:7px; padding:11px 20px; border-radius:11px; text-decoration:none; background:linear-gradient(135deg,var(--pur),var(--pur2)); color:#fff; font-size:13.5px; font-weight:700; transition:filter .18s; }
-.aj-apply:hover { filter:brightness(1.12); }
-.aj-arrow { transition:transform .18s; }
-.aj-apply:hover .aj-arrow { transform:translateX(3px); }
-.aj-save { display:inline-flex; align-items:center; gap:7px; padding:11px 18px; border:1px solid var(--border); background:transparent; color:var(--text-2); border-radius:11px; cursor:pointer; font-size:13.5px; font-weight:600; transition:all .18s; }
-.aj-save:hover { color:var(--text); border-color:var(--border-hi); }
-.aj-save.is-saved { color:var(--pur); border-color:var(--border-hi); background:rgba(124,111,239,.1); }
+/* Detail Content */
+.aj-detail-head { display: flex; align-items: center; gap: 20px; margin-bottom: 32px; }
+.aj-logo-lg { width: 64px; height: 64px; border-radius: 16px; font-size: 24px; }
+.aj-detail-title { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 8px; line-height: 1.2; }
+.aj-detail-company { font-size: 15px; color: var(--tx2); }
 
-.aj-saved-fact { display:flex; align-items:center; gap:7px; font-size:12px; color:var(--text-3); margin-bottom:14px; }
-.aj-stale-banner { display:flex; align-items:flex-start; gap:10px; padding:12px 16px; border-radius:12px; background:rgba(245,196,81,.08); border:1px solid rgba(245,196,81,.28); color:var(--gold); font-size:12.5px; line-height:1.55; margin-bottom:16px; }
-.aj-stale-ic { flex-shrink:0; }
-.aj-visa { display:flex; gap:13px; padding:16px 18px; border-radius:14px; margin-bottom:16px; }
-.aj-visa.is-ok { background:rgba(0,212,170,.07); border:1px solid rgba(0,212,170,.25); }
-.aj-visa.is-unknown { background:rgba(255,255,255,.025); border:1px solid var(--border); }
-.aj-visa-ic { width:30px; height:30px; border-radius:50%; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-weight:800; }
-.aj-visa.is-ok .aj-visa-ic { background:rgba(0,212,170,.15); color:var(--verify); }
-.aj-visa.is-unknown .aj-visa-ic { background:rgba(255,255,255,.06); color:var(--text-3); }
-.aj-visa-t { font-size:14px; font-weight:700; color:var(--text); margin-bottom:4px; }
-.aj-visa-s { font-size:12.5px; color:var(--text-2); line-height:1.6; }
-.aj-inferred-note { font-size:11.5px; color:var(--text-3); font-style:italic; margin-bottom:20px; }
+.aj-facts { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 32px; }
+.aj-fact { background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); border-radius: 12px; padding: 12px 20px; min-width: 100px; }
+.aj-fact-lbl { font-size: 11px; font-weight: 700; color: var(--tx3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+.aj-fact-val { font-size: 15px; font-weight: 700; color: var(--tx); }
 
-.aj-section-h { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-2); margin-bottom:12px; }
-.aj-desc-body p { font-size:13.5px; line-height:1.75; color:var(--text-2); margin:0 0 14px; }
-.aj-desc-more { font-size:12px !important; color:var(--text-3) !important; font-style:italic; }
-.aj-desc-link { display:inline-flex; align-items:center; gap:6px; font-size:13px; font-weight:700; color:var(--pur); text-decoration:none; margin-top:4px; }
-.aj-desc-link:hover { text-decoration:underline; }
+/* The Action Bar */
+.aj-detail-actions { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 32px; padding-bottom: 32px; border-bottom: 1px solid var(--border); }
+.aj-apply { display: inline-flex; align-items: center; gap: 8px; background: linear-gradient(135deg, var(--pur), var(--pur2)); color: #fff; padding: 12px 24px; border-radius: 12px; font-size: 14px; font-weight: 700; text-decoration: none; transition: all 0.2s; box-shadow: 0 4px 15px rgba(124, 111, 239, 0.3); }
+.aj-apply:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(124, 111, 239, 0.4); }
+.aj-network-btn { display: inline-flex; align-items: center; gap: 8px; background: rgba(255, 255, 255, 0.05); color: #fff; border: 1px solid var(--border); padding: 12px 20px; border-radius: 12px; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+.aj-network-btn:hover { background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.2); transform: translateY(-2px); }
+.aj-scan { display: inline-flex; align-items: center; gap: 8px; background: rgba(0, 212, 170, 0.1); color: var(--teal); border: 1px solid rgba(0, 212, 170, 0.2); padding: 12px 20px; border-radius: 12px; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+.aj-scan:hover { background: rgba(0, 212, 170, 0.15); border-color: var(--teal); transform: translateY(-2px); }
+.aj-save-btn { display: inline-flex; align-items: center; gap: 8px; background: transparent; border: 1px solid var(--border); color: var(--tx2); padding: 12px 20px; border-radius: 12px; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+.aj-save-btn:hover { color: var(--tx); border-color: var(--tx3); }
+.aj-save-btn.is-saved { background: rgba(124, 111, 239, 0.1); color: var(--pur); border-color: var(--pur); }
 
-.aj-detail-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:60px 30px; min-height:400px; }
-.aj-detail-empty-ic { font-size:40px; margin-bottom:16px; opacity:0.5; }
-.aj-detail-empty-t { font-size:15px; font-weight:700; color:var(--text); margin-bottom:8px; }
-.aj-detail-empty-s { font-size:13px; color:var(--text-3); line-height:1.6; max-width:320px; }
+/* Visa Box */
+.aj-visa { display: flex; gap: 16px; padding: 20px; border-radius: 16px; margin-bottom: 32px; }
+.aj-visa.is-ok { background: rgba(0, 212, 170, 0.05); border: 1px solid rgba(0, 212, 170, 0.2); }
+.aj-visa.is-unknown { background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border); }
+.aj-visa-ic { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+.aj-visa.is-ok .aj-visa-ic { background: rgba(0, 212, 170, 0.15); color: var(--teal); }
+.aj-visa.is-unknown .aj-visa-ic { background: rgba(255, 255, 255, 0.05); color: var(--tx3); }
+.aj-visa-t { font-size: 15px; font-weight: 700; color: var(--tx); margin-bottom: 6px; }
+.aj-visa-s { font-size: 13.5px; color: var(--tx2); line-height: 1.5; }
 
-.aj-state { background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:32px; text-align:center; margin-top:1rem; max-width:560px; }
-.aj-state--error { border-color:rgba(244,99,99,.25); }
-.aj-state-title { font-size:15px; font-weight:700; color:var(--text); margin-bottom:6px; }
-.aj-state-sub { font-size:12.5px; color:var(--text-3); line-height:1.5; }
-.aj-retry { margin-top:16px; padding:9px 20px; border:none; border-radius:10px; background:linear-gradient(135deg,var(--pur),var(--pur2)); color:#fff; font-size:12.5px; font-weight:700; cursor:pointer; transition:filter .18s; }
-.aj-retry:hover { filter:brightness(1.12); }
-.aj-end { text-align:center; font-size:11.5px; color:var(--text-3); padding:14px 0 4px; }
+/* Description */
+.aj-section-h { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tx2); margin-bottom: 16px; }
+.aj-desc-body { font-size: 15px; line-height: 1.8; color: #cbd5e1; }
+.aj-desc-body p { margin: 0 0 20px; }
 
-.aj-skel-list { display:grid; grid-template-columns:1fr; max-width:420px; gap:10px; }
-.aj-lc--skel { pointer-events:none; }
-.aj-skel { background:linear-gradient(90deg,#13131f 25%,#1e1e2e 50%,#13131f 75%); background-size:200% 100%; animation:aj-shimmer 1.4s ease-in-out infinite; border-radius:6px; }
-.aj-skel-logo { width:42px; height:42px; border-radius:11px; }
-@keyframes aj-shimmer { 0% { background-position:200% 0; } 100% { background-position:-200% 0; } }
+/* Loading & States */
+.aj-loading { text-align: center; padding: 60px 20px; color: var(--tx2); }
+.aj-spinner { width: 40px; height: 40px; border: 3px solid var(--border); border-top-color: var(--pur); border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.aj-msg-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 40px 20px; text-align: center; }
+.aj-msg-card h3 { margin: 0 0 8px; font-size: 18px; }
+.aj-msg-card p { margin: 0 0 24px; color: var(--tx2); }
+.aj-feed-end { text-align: center; padding: 24px 0; font-size: 13px; color: var(--tx3); font-weight: 600; }
+.fade-in { animation: fadeIn 0.3s ease-out forwards; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
-@media (max-width:960px) {
-  .aj-split { grid-template-columns:1fr; }
-  .aj-detail {
-    position:fixed; inset:0; z-index:200; border-radius:0; margin:0; top:0;
-    transform:translateX(100%); transition:transform .28s cubic-bezier(.4,0,.2,1);
-    overflow-y:auto; background:var(--bg);
+/* ── STRICT MOBILE OPTIMIZATION ── */
+@media (max-width: 1024px) {
+  .aj-split-view { grid-template-columns: 350px 1fr; gap: 16px; }
+}
+
+@media (max-width: 768px) {
+  .aj-container { padding: 24px 16px; }
+  .aj-head { margin-bottom: 24px; }
+  .aj-search-inputs { flex-direction: column; padding: 0; background: transparent; border: none; }
+  .aj-input-wrap { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; margin-bottom: 12px; }
+  .aj-divider { display: none; }
+  .aj-btn-primary { width: 100%; }
+  
+  .aj-controls-row { flex-direction: column; align-items: stretch; gap: 12px; }
+  .aj-tabs { width: 100%; }
+  .aj-tabs button { flex: 1; text-align: center; }
+  
+  .aj-split-view { display: block; }
+  .aj-list-col { height: auto; padding-right: 0; }
+  
+  /* Mobile Detail Takeover */
+  .aj-detail-col { 
+    position: fixed; inset: 0; z-index: 1000; background: var(--bg); border: none; border-radius: 0; 
+    height: 100vh; transform: translateX(100%); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); 
+    display: none; 
   }
-  .aj-detail.is-open { transform:translateX(0); }
-  .aj-detail-back { display:inline-flex; }
-}
-@media (prefers-reduced-motion: reduce) { .aj * { animation:none !important; transition:none !important; } }
-@media (max-width:600px) {
-  .aj { padding:1.5rem 1.1rem 3rem; }
-  .aj-props { grid-template-columns:1fr; }
-  .aj-filters { flex-direction:column; align-items:stretch; }
-  .aj-filter-reset { margin-left:0; }
+  .aj-detail-col.is-open { transform: translateX(0); display: block; }
+  .aj-detail-inner { padding: 24px 16px 80px; }
+  
+  /* Mobile Back Button */
+  .aj-detail-back { display: flex; align-items: center; gap: 8px; background: transparent; border: none; color: var(--tx2); font-size: 15px; font-weight: 700; padding: 16px 0; margin-bottom: 16px; cursor: pointer; }
+  
+  /* Mobile Action Bar */
+  .aj-detail-actions { flex-direction: column; border-bottom: none; }
+  .aj-apply, .aj-network-btn, .aj-scan, .aj-save-btn { width: 100%; justify-content: center; }
 }
 `;
-
-export default Jobs;

@@ -4,13 +4,31 @@ import { useAuth } from "../context/AuthContext";
 
 // ─────────────────────────────────────────────────────────────
 // ARIVO CAREER ENGINE · The "Anti-ChatGPT" UI
-// Bulletproof Flexbox Layout to prevent vertical floating.
-// Original Arivo Color Palette restored.
+// Features: Coach Bridge, LocalStorage Persistence, Mobile-First
+// Horizontal Tabs, and Contextual Smart-Tap Prompts.
 // ─────────────────────────────────────────────────────────────
 
 const AI_URL = import.meta.env.VITE_AI_URL;
 const now = () =>
   new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+// ── Local Storage Helpers ──
+const readLS = (key, fallback) => {
+  try {
+    const r = localStorage.getItem(key);
+    return r ? JSON.parse(r) : fallback;
+  } catch (err) {
+    console.warn("Storage read error:", err);
+    return fallback;
+  }
+};
+const writeLS = (key, val) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(val));
+  } catch (err) {
+    console.warn("Storage write error:", err);
+  }
+};
 
 // ── Icons ─────────────────────────────────────────────────────
 const Ic = {
@@ -157,13 +175,17 @@ const Ic = {
   ),
 };
 
-// ── Modules ───────────────────────────────────────────────────
+// ── Modules + Smart Prompts ───────────────────────────────────
 const COACH_MODES = [
   {
     id: "general",
     icon: Ic.spark(),
     name: "General Intelligence",
     desc: "Ask anything. Grounded in live UK data.",
+    suggestions: [
+      "Which companies sponsor ML engineers?",
+      "Write a UK-style cover letter template",
+    ],
   },
   {
     id: "localizer",
@@ -171,24 +193,40 @@ const COACH_MODES = [
     name: "Experience Localizer",
     desc: "Translate home-country roles to UK scale.",
     status: "beta",
+    suggestions: [
+      "Translate my CGPA to the UK degree scale",
+      "Rewrite this bullet point for UK recruiters",
+    ],
   },
   {
     id: "visa",
     icon: Ic.shield(),
     name: "Visa Strategist",
     desc: "How and when to ask for sponsorship.",
+    suggestions: [
+      "When should I mention I need sponsorship?",
+      "Can I switch from a PSW to a Tier 2 visa?",
+    ],
   },
   {
     id: "interview",
     icon: Ic.target(),
     name: "Mock Interviewer",
     desc: "Simulate interviews from live URLs.",
+    suggestions: [
+      "Ask me a UK behavioral question",
+      "How do I answer 'Tell me about a time you failed'?",
+    ],
   },
   {
     id: "tone",
     icon: Ic.pen(),
     name: "Tone & Culture Scanner",
     desc: "Check your emails for UK corporate fit.",
+    suggestions: [
+      "Does this networking email sound too aggressive?",
+      "Make this sound more British corporate",
+    ],
   },
 ];
 
@@ -276,8 +314,24 @@ export default function Chat() {
   const { currentUser } = useAuth();
   const firstName = currentUser?.name?.split(" ")[0] || "there";
 
-  const [activeMode, setActiveMode] = useState("general");
-  const [messages, setMessages] = useState([]);
+  const [activeMode, setActiveMode] = useState(() =>
+    readLS("arivo_chat_mode", "general"),
+  );
+
+  // UX FIX: Load initial state directly inside useState to prevent cascading renders
+  const [messages, setMessages] = useState(() => {
+    const history = readLS("arivo_chat_history", []);
+    if (history.length === 0) {
+      return [
+        {
+          role: "arivo",
+          text: `System ready, ${firstName}. I am the Arivo Career Engine. Unlike standard AI, I am directly hooked into the UK Home Office database and your personal CV context. Select a module on the left to begin.`,
+        },
+      ];
+    }
+    return history;
+  });
+
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingText, setLoadingText] = useState(LOADING_PHRASES[0]);
@@ -287,14 +341,13 @@ export default function Chat() {
   const bottomRef = useRef(null);
   const taRef = useRef(null);
 
+  // Auto-save history & mode
   useEffect(() => {
-    setMessages([
-      {
-        role: "arivo",
-        text: `System ready, ${firstName}. I am the Arivo Career Engine. Unlike standard AI, I am directly hooked into the UK Home Office database and your personal CV context. Select a module on the left to begin.`,
-      },
-    ]);
-  }, [firstName]);
+    writeLS("arivo_chat_mode", activeMode);
+  }, [activeMode]);
+  useEffect(() => {
+    writeLS("arivo_chat_history", messages);
+  }, [messages]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -340,7 +393,8 @@ export default function Chat() {
         ...prev,
         { role: "arivo", text: res.data.response, time: now() },
       ]);
-    } catch {
+    } catch (e) {
+      console.warn("API Error:", e);
       setMessages((prev) => [
         ...prev,
         {
@@ -354,6 +408,20 @@ export default function Chat() {
     setLoading(false);
   };
 
+  // ── THE COACH BRIDGE (Auto-receive deep links) ──
+  // UX FIX: Must be placed below the `send` function declaration
+  useEffect(() => {
+    const pendingPrompt = sessionStorage.getItem("arivo_pending_coach_prompt");
+    if (pendingPrompt) {
+      sessionStorage.removeItem("arivo_pending_coach_prompt");
+      // Set a slight delay so the user sees the transition before the message sends
+      setTimeout(() => {
+        send(pendingPrompt);
+      }, 600);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const onKeyDown = (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -366,17 +434,20 @@ export default function Chat() {
       await navigator.clipboard.writeText(text);
       setCopiedIdx(idx);
       setTimeout(() => setCopiedIdx(null), 1500);
-    } catch {}
+    } catch (e) {
+      console.warn("Clipboard error:", e);
+    }
   };
 
-  const currentModeData = COACH_MODES.find((m) => m.id === activeMode);
+  const currentModeData =
+    COACH_MODES.find((m) => m.id === activeMode) || COACH_MODES[0];
 
   return (
     <div className="engine-wrapper">
       <style>{styles}</style>
 
       <div className="engine-layout">
-        {/* ── LEFT: The Arsenal ── */}
+        {/* ── LEFT: The Arsenal (Mobile: Top Scroll Bar) ── */}
         <aside className="panel panel-left">
           <div className="panel-header">
             <span className="eyebrow">Command Modules</span>
@@ -425,23 +496,14 @@ export default function Chat() {
                   Not just another chatbot. Grounded in verified UK Home Office
                   data and your personal CV context.
                 </p>
+
+                {/* DYNAMIC SMART PROMPTS */}
                 <div className="es-suggestions">
-                  <button
-                    onClick={() =>
-                      send(
-                        "Which companies sponsor Skilled Worker visas for ML engineers?",
-                      )
-                    }
-                  >
-                    Who sponsors ML Engineers? {Ic.arrowRight()}
-                  </button>
-                  <button
-                    onClick={() =>
-                      send("How do I write a UK-style cover letter?")
-                    }
-                  >
-                    UK Cover Letter format {Ic.arrowRight()}
-                  </button>
+                  {currentModeData.suggestions.map((sug, i) => (
+                    <button key={i} onClick={() => send(sug)}>
+                      {sug} {Ic.arrowRight()}
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
@@ -522,6 +584,23 @@ export default function Chat() {
           </div>
 
           <div className="console-input-area">
+            {/* Clear History Button */}
+            {messages.length > 1 && (
+              <button
+                className="btn-clear-chat"
+                onClick={() => {
+                  setMessages([
+                    {
+                      role: "arivo",
+                      text: `System ready, ${firstName}. I am the Arivo Career Engine. Unlike standard AI, I am directly hooked into the UK Home Office database and your personal CV context. Select a module on the left to begin.`,
+                    },
+                  ]);
+                }}
+              >
+                Clear History
+              </button>
+            )}
+
             <div className="input-box">
               <textarea
                 ref={taRef}
@@ -545,16 +624,14 @@ export default function Chat() {
           </div>
         </main>
 
-        {/* ── RIGHT: Context Board ── */}
+        {/* ── RIGHT: Context Board (Hidden on Mobile) ── */}
         <aside className="panel panel-right">
           <div className="panel-header">
             <span className="eyebrow">The Arivo Edge</span>
           </div>
-
           <div className="context-scroll">
             <div className="ctx-group">
               <div className="ctx-group-label">Why Arivo ≠ ChatGPT</div>
-
               <div className="ctx-card active">
                 <div className="ctx-header">
                   {Ic.shield()} Real-Time DB Hooks
@@ -565,7 +642,6 @@ export default function Chat() {
                 </div>
                 <div className="ctx-value text-teal">Status: Synced</div>
               </div>
-
               <div className="ctx-card active">
                 <div className="ctx-header">{Ic.server()} Adzuna Live Feed</div>
                 <div className="ctx-desc">
@@ -574,10 +650,8 @@ export default function Chat() {
                 <div className="ctx-value text-teal">Status: Online</div>
               </div>
             </div>
-
             <div className="ctx-group">
               <div className="ctx-group-label">Context Loaded</div>
-
               <div className="ctx-card">
                 <div className="ctx-header">
                   {Ic.target()} Profile Targeting
@@ -595,26 +669,15 @@ export default function Chat() {
 }
 
 // ─────────────────────────────────────────────────────────────
-// STRICT FLEXBOX CSS (No Grid Vertical Floating)
+// STRICT FLEXBOX CSS (Mobile Optimized)
 // ─────────────────────────────────────────────────────────────
 const styles = `
 :root {
-  --bg: #08080f;
-  --surface: #0f0f18;
-  --surface-hover: rgba(255,255,255,0.04);
-  --border: rgba(255,255,255,0.08);
-  --border-hi: rgba(124, 111, 239, 0.4);
-  
-  --pur: #7c6fef;
-  --pur2: #9b6ef3;
-  --teal: #00d4aa;
-  
-  --text: #f0f0ff;
-  --text-2: #8888aa;
-  --text-3: #55556a;
-  
-  --red: #ff7a7a;
-  --red-bg: rgba(255, 122, 122, 0.1);
+  --bg: #08080f; --surface: #0f0f18; --surface-hover: rgba(255,255,255,0.04);
+  --border: rgba(255,255,255,0.08); --border-hi: rgba(124, 111, 239, 0.4);
+  --pur: #7c6fef; --pur2: #9b6ef3; --teal: #00d4aa;
+  --text: #f0f0ff; --text-2: #8888aa; --text-3: #55556a;
+  --red: #ff7a7a; --red-bg: rgba(255, 122, 122, 0.1);
 }
 
 .engine-wrapper {
@@ -632,81 +695,43 @@ const styles = `
 
 /* ── BULLETPROOF FLEX LAYOUT ── */
 .engine-layout {
-  display: flex;
-  flex-direction: row;
-  align-items: stretch; /* Forces equal height */
-  gap: 20px;
-  flex: 1;
-  min-height: 0;
-  width: 100%;
-  max-width: 1600px;
-  margin: 0 auto;
+  display: flex; flex-direction: row; align-items: stretch; gap: 20px;
+  flex: 1; min-height: 0; width: 100%; max-width: 1600px; margin: 0 auto;
 }
 
 /* Base Panel */
 .panel {
-  display: flex;
-  flex-direction: column;
-  height: 100%; /* Locks to wrapper */
-  min-height: 0;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  overflow: hidden;
+  display: flex; flex-direction: column; height: 100%; min-height: 0;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden;
 }
 
-.panel-left, .panel-right {
-  flex: 0 0 300px; /* Fixed width sidebars */
-}
-.panel-center {
-  flex: 1; /* Takes remaining space */
-  min-width: 0;
-}
+.panel-left, .panel-right { flex: 0 0 300px; }
+.panel-center { flex: 1; min-width: 0; }
 
-.panel-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-  background: rgba(255,255,255,0.01);
-}
-.eyebrow {
-  font-size: 11px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.1em; color: var(--text-2);
-}
+.panel-header { padding: 16px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; background: rgba(255,255,255,0.01); }
+.eyebrow { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-2); }
 
 /* ── LEFT PANEL ── */
-.sidebar-nav {
-  padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;
-}
+.sidebar-nav { padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
 .sidebar-nav::-webkit-scrollbar { width: 4px; }
 .sidebar-nav::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
 .nav-item {
-  display: flex; align-items: flex-start; gap: 12px; padding: 14px 12px; width: 100%; text-align: left;
+  display: flex; align-items: center; gap: 12px; padding: 14px 12px; width: 100%; text-align: left;
   background: transparent; border: 1px solid transparent; border-radius: 10px; cursor: pointer;
   transition: all 0.2s; color: var(--text-2); font-family: inherit;
 }
 .nav-item:hover { background: var(--surface-hover); color: var(--text); }
-.nav-item.is-active {
-  background: rgba(124, 111, 239, 0.08); border-color: var(--border-hi);
-  color: var(--text);
-}
-.nav-icon {
-  width: 28px; height: 28px; border-radius: 8px; background: rgba(255,255,255,0.05);
-  display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s;
-}
+.nav-item.is-active { background: rgba(124, 111, 239, 0.08); border-color: var(--border-hi); color: var(--text); }
+.nav-icon { width: 28px; height: 28px; border-radius: 8px; background: rgba(255,255,255,0.05); display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s; }
 .nav-item.is-active .nav-icon { background: rgba(124, 111, 239, 0.2); color: var(--pur); }
 .nav-text { flex: 1; min-width: 0; }
-.nav-name { font-size: 13px; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+.nav-name { font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
 .tag-beta { font-size: 9px; padding: 2px 6px; background: rgba(245, 196, 81, 0.15); color: #f5c451; border: 1px solid rgba(245, 196, 81, 0.3); border-radius: 4px; font-weight: 800; }
-.nav-desc { font-size: 12px; color: var(--text-3); line-height: 1.4; }
+.nav-desc { font-size: 12px; color: var(--text-3); line-height: 1.4; margin-top: 4px; }
 
 /* ── CENTER CONSOLE ── */
-.console-header {
-  padding: 16px 24px; border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
-  background: rgba(255,255,255,0.01);
-}
+.console-header { padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; background: rgba(255,255,255,0.01); }
 .ch-left { display: flex; align-items: center; gap: 14px; }
 .ch-icon { width: 36px; height: 36px; border-radius: 10px; background: rgba(124, 111, 239, 0.15); border: 1px solid var(--border-hi); display: flex; align-items: center; justify-content: center; color: var(--pur); }
 .ch-title { margin: 0; font-size: 16px; font-weight: 800; color: var(--text); letter-spacing: -0.01em; }
@@ -716,9 +741,7 @@ const styles = `
 .status-text { font-size: 12px; font-weight: 600; }
 .text-teal { color: var(--teal); }
 
-.console-thread {
-  flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 24px;
-}
+.console-thread { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 24px; }
 .console-thread::-webkit-scrollbar { width: 6px; }
 .console-thread::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; }
 
@@ -728,11 +751,7 @@ const styles = `
 .empty-state h3 { margin: 0 0 10px; font-size: 20px; font-weight: 800; letter-spacing: -0.02em; }
 .empty-state p { margin: 0 0 24px; font-size: 14px; color: var(--text-2); line-height: 1.6; }
 .es-suggestions { display: flex; flex-direction: column; gap: 10px; width: 100%; }
-.es-suggestions button {
-  display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 14px 18px;
-  background: transparent; border: 1px solid var(--border); border-radius: 12px;
-  color: var(--text-2); font-size: 13.5px; font-weight: 600; cursor: pointer; transition: all 0.2s; font-family: inherit;
-}
+.es-suggestions button { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 14px 18px; background: transparent; border: 1px solid var(--border); border-radius: 12px; color: var(--text-2); font-size: 13.5px; font-weight: 600; cursor: pointer; transition: all 0.2s; font-family: inherit; }
 .es-suggestions button:hover { background: rgba(124, 111, 239, 0.08); color: var(--text); border-color: var(--border-hi); transform: translateY(-1px); }
 
 /* Chat Messages */
@@ -740,10 +759,7 @@ const styles = `
 .msg-arivo { align-self: flex-start; }
 .msg-user { align-self: flex-end; flex-direction: row-reverse; }
 
-.msg-avatar {
-  width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-  background: linear-gradient(135deg, var(--pur), var(--pur2)); box-shadow: 0 4px 10px rgba(124, 111, 239, 0.3); color: #fff;
-}
+.msg-avatar { width: 32px; height: 32px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; background: linear-gradient(135deg, var(--pur), var(--pur2)); box-shadow: 0 4px 10px rgba(124, 111, 239, 0.3); color: #fff; }
 .msg-avatar.is-loading { animation: pulse 2s infinite; }
 
 .msg-content { display: flex; flex-direction: column; min-width: 0; }
@@ -764,6 +780,7 @@ const styles = `
 .btn-action { background: transparent; border: none; padding: 4px; display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-3); font-weight: 600; cursor: pointer; transition: color 0.15s; }
 .btn-action:hover { color: var(--text); }
 .action-success { color: var(--teal); display: flex; align-items: center; gap: 4px; }
+.btn-retry { background: transparent; border: 1px solid var(--red); color: var(--red); padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 700; cursor: pointer; margin-top: 8px; }
 
 /* Rich Text */
 .rt-container p { margin: 0 0 12px; } .rt-container p:last-child { margin-bottom: 0; }
@@ -777,31 +794,24 @@ const styles = `
 /* Telemetry */
 .telemetry { display: flex; align-items: center; gap: 10px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--pur2); border-color: var(--border-hi); background: rgba(124, 111, 239, 0.05); }
 .t-spinner { width: 14px; height: 14px; border: 2px solid rgba(124, 111, 239, 0.3); border-top-color: var(--pur2); border-radius: 50%; animation: spin 1s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
 
 /* Composer */
-.console-input-area { padding: 0 24px 24px; flex-shrink: 0; }
-.input-box {
-  display: flex; align-items: flex-end; gap: 12px; background: var(--bg); border: 1px solid var(--border);
-  border-radius: 14px; padding: 10px 10px 10px 18px; transition: border-color 0.2s, box-shadow 0.2s;
-}
+.console-input-area { padding: 0 24px 24px; flex-shrink: 0; display: flex; flex-direction: column; }
+.btn-clear-chat { align-self: center; margin-bottom: 12px; background: transparent; border: none; color: var(--text-3); font-size: 12px; cursor: pointer; transition: color 0.2s; }
+.btn-clear-chat:hover { color: var(--text); }
+.input-box { display: flex; align-items: flex-end; gap: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 14px; padding: 10px 10px 10px 18px; transition: border-color 0.2s, box-shadow 0.2s; }
 .input-box:focus-within { border-color: var(--pur); box-shadow: 0 0 0 4px rgba(124, 111, 239, 0.15); }
 .input-box textarea { flex: 1; resize: none; border: none; outline: none; background: transparent; color: var(--text); font-size: 14px; line-height: 1.5; padding: 6px 0; max-height: 150px; font-family: inherit; }
 .input-box textarea::placeholder { color: var(--text-3); }
-.btn-send {
-  width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, var(--pur), var(--pur2)); color: #fff;
-  border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; flex-shrink: 0;
-}
+.btn-send { width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, var(--pur), var(--pur2)); color: #fff; border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; flex-shrink: 0; }
 .btn-send:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.1); box-shadow: 0 4px 15px rgba(124, 111, 239, 0.3); }
 .btn-send:disabled { background: rgba(255,255,255,0.05); color: var(--text-3); cursor: not-allowed; box-shadow: none; transform: none; }
 .input-footer { text-align: center; font-size: 11px; color: var(--text-3); margin-top: 10px; }
 
-/* ── RIGHT PANEL (The Moat Context) ── */
+/* ── RIGHT PANEL ── */
 .context-scroll { padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 24px; }
-
 .ctx-group { display: flex; flex-direction: column; gap: 12px; }
 .ctx-group-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-3); margin-left: 4px; }
-
 .ctx-card { background: rgba(0,0,0,0.2); border: 1px solid var(--border); border-radius: 12px; padding: 16px; }
 .ctx-card.active { border-color: rgba(0, 212, 170, 0.3); background: rgba(0, 212, 170, 0.05); }
 .ctx-header { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
@@ -810,15 +820,34 @@ const styles = `
 .ctx-desc { font-size: 12px; color: var(--text-2); margin-bottom: 12px; line-height: 1.4; }
 .ctx-value { font-size: 12px; font-weight: 700; color: var(--text); }
 
-/* Responsive */
+/* ── STRICT MOBILE OPTIMIZATIONS ── */
 @media (max-width: 1100px) {
   .engine-layout { grid-template-columns: 260px 1fr; }
   .panel-right { display: none; }
 }
+
 @media (max-width: 860px) {
-  .engine-wrapper { padding: 12px; }
-  .engine-layout { flex-direction: column; }
-  .panel-left { display: none; }
-  .panel-center { flex: 1; min-height: 600px; }
+  .engine-wrapper { padding: 12px 12px 0; height: calc(100vh - 56px); }
+  .engine-layout { flex-direction: column; gap: 12px; }
+  
+  /* Left Panel becomes horizontal scrollbar above chat */
+  .panel-left { flex: 0 0 auto; border-radius: 12px; height: auto; }
+  .panel-header { display: none; }
+  .sidebar-nav { flex-direction: row; overflow-x: auto; padding: 8px; gap: 8px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .sidebar-nav::-webkit-scrollbar { display: none; }
+  .nav-item { width: auto; flex-shrink: 0; padding: 8px 12px; border-radius: 8px; }
+  .nav-desc { display: none; }
+  
+  /* Adjust center console */
+  .panel-center { flex: 1; border-radius: 12px 12px 0 0; border-bottom: none; }
+  .console-header { padding: 12px 16px; }
+  .ch-title { font-size: 14px; }
+  
+  .console-thread { padding: 16px 12px; }
+  .msg-block { max-width: 95%; }
+  
+  .console-input-area { padding: 0 12px 12px; }
+  .input-box { padding: 8px 8px 8px 14px; border-radius: 12px; }
+  .input-footer { display: none; }
 }
 `;

@@ -2,9 +2,9 @@ import { useAuth } from "../context/AuthContext";
 import { useState } from "react";
 
 // ─────────────────────────────────────────────────────────────
-// DASHBOARD · Arivo AI (V2 Premium Architecture)
-// Full-bleed, glassmorphic layout.
-// Removed synchronous useEffect to prevent cascading renders.
+// DASHBOARD · Arivo AI (V2 Premium Architecture + Blueprint)
+// Full-bleed, glassmorphic layout with custom hover physics
+// and the Daily 15-Minute Anti-Overwhelm Blueprint.
 // ─────────────────────────────────────────────────────────────
 
 const tools = [
@@ -76,7 +76,7 @@ export default function Dashboard({ onNavigate }) {
   const name = currentUser?.name?.split(" ")[0] || "there";
   const role = currentUser?.targetRole || "Software Engineer";
 
-  // FIX: Calculate the time synchronously exactly once on mount, no useEffect needed.
+  // Calculate greeting based on user's local time
   const [timeState] = useState(() => {
     const hour = new Date().getHours();
     if (hour < 12) return "Good morning";
@@ -84,10 +84,100 @@ export default function Dashboard({ onNavigate }) {
     return "Good evening";
   });
 
+  // ── DAILY BLUEPRINT STATE & PERSISTENCE ──
+  const [completedTasks, setCompletedTasks] = useState(() => {
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const saved = localStorage.getItem("arivo_blueprint_tasks");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.date === today) return parsed.completed || [];
+      }
+    } catch (error) {
+      console.warn("Storage read error:", error);
+    }
+    return [];
+  });
+
+  // UX FIX: Calculate tasks synchronously on mount to avoid cascading renders
+  const [dailyBlueprint] = useState(() => {
+    let missingSkill = null;
+    try {
+      const gapData = JSON.parse(
+        localStorage.getItem("arivo_pf_gap_result") || "null",
+      );
+      if (gapData?.missing_required?.[0]) {
+        missingSkill = gapData.missing_required[0];
+      }
+    } catch (error) {
+      console.warn("Storage read error:", error);
+    }
+
+    return [
+      {
+        id: "task-1",
+        time: "5 MINS",
+        title: missingSkill
+          ? `Build Study Plan for ${missingSkill}`
+          : "Scan CV for ATS Bottlenecks",
+        desc: missingSkill
+          ? `Your gap analysis flagged ${missingSkill}. Generate a 4-week study plan with AI Coach.`
+          : "Run your CV through our ATS parser to eliminate invisible formatting flags.",
+        page: missingSkill ? "profile" : "ats",
+        badge: "High Impact",
+      },
+      {
+        id: "task-2",
+        time: "5 MINS",
+        title: "Review Verified Tier 2 Sponsors",
+        desc: "Filter live London openings by Skilled Worker sponsor license status.",
+        page: "jobs",
+        badge: "Sponsorship",
+      },
+      {
+        id: "task-3",
+        time: "5 MINS",
+        title: "Simulate UK Behavioral Interview",
+        desc: "Ask the AI Coach 1 STAR-method question tailored for UK recruiters.",
+        page: "chat",
+        badge: "Prep",
+      },
+    ];
+  });
+
+  const toggleTask = (taskId) => {
+    const today = new Date().toISOString().slice(0, 10);
+    const updated = completedTasks.includes(taskId)
+      ? completedTasks.filter((id) => id !== taskId)
+      : [...completedTasks, taskId];
+
+    setCompletedTasks(updated);
+    try {
+      localStorage.setItem(
+        "arivo_blueprint_tasks",
+        JSON.stringify({ date: today, completed: updated }),
+      );
+    } catch (error) {
+      console.warn("Storage write error:", error);
+    }
+  };
+
+  // UX Physics: Tracks mouse position for card glow
+  const handleMouseMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    e.currentTarget.style.setProperty("--mouse-x", `${x}px`);
+    e.currentTarget.style.setProperty("--mouse-y", `${y}px`);
+  };
+
+  const completedCount = completedTasks.length;
+
   return (
     <div className="dash-container">
       <style>{styles}</style>
 
+      {/* Deep Background Elements */}
       <div className="dash-grid-bg"></div>
 
       <div className="dash-wrapper">
@@ -125,10 +215,73 @@ export default function Dashboard({ onNavigate }) {
           </div>
         </header>
 
+        {/* ── DAILY 15-MINUTE BLUEPRINT (THE ANTI-OVERWHELM ENGINE) ── */}
+        <section
+          className="blueprint-zone glass-panel fade-up"
+          style={{ animationDelay: "0.05s" }}
+        >
+          <div className="blueprint-header">
+            <div className="blueprint-title-wrap">
+              <span className="blueprint-tag">
+                ⚡ TODAY'S 15-MINUTE BLUEPRINT
+              </span>
+              <h2>Daily Micro-Actions</h2>
+              <p>
+                Execute these 3 small steps today to keep your job hunt moving
+                forward.
+              </p>
+            </div>
+            <div className="blueprint-progress">
+              <div className="progress-bar-bg">
+                <div
+                  className="progress-bar-fill"
+                  style={{ width: `${(completedCount / 3) * 100}%` }}
+                ></div>
+              </div>
+              <span className="progress-text">
+                {completedCount}/3 Completed Today
+              </span>
+            </div>
+          </div>
+
+          <div className="blueprint-tasks">
+            {dailyBlueprint.map((task) => {
+              const isDone = completedTasks.includes(task.id);
+              return (
+                <div
+                  key={task.id}
+                  className={`blueprint-task-card ${isDone ? "is-completed" : ""}`}
+                >
+                  <div
+                    className="task-checkbox"
+                    onClick={() => toggleTask(task.id)}
+                  >
+                    {isDone ? "✓" : ""}
+                  </div>
+                  <div className="task-info">
+                    <div className="task-top-row">
+                      <span className="task-badge">{task.badge}</span>
+                      <span className="task-time">{task.time}</span>
+                    </div>
+                    <h3 className="task-title">{task.title}</h3>
+                    <p className="task-desc">{task.desc}</p>
+                  </div>
+                  <button
+                    className="task-action-btn"
+                    onClick={() => onNavigate(task.page)}
+                  >
+                    Start <span>→</span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
         {/* ── HERO ZONE ── */}
         <section
           className="hero-zone fade-up"
-          style={{ animationDelay: "0.1s" }}
+          style={{ animationDelay: "0.15s" }}
         >
           {/* Spotlight Main Card */}
           <div className="spotlight-card glass-panel interactive-glow">
@@ -154,7 +307,7 @@ export default function Dashboard({ onNavigate }) {
               </div>
             </div>
 
-            {/* Animated CSS Orb instead of static emoji */}
+            {/* Animated CSS Orb */}
             <div className="spotlight-visual">
               <div className="orb-container">
                 <div className="orb-ring ring-1"></div>
@@ -166,7 +319,6 @@ export default function Dashboard({ onNavigate }) {
 
           {/* Activity & Trust Sidebar */}
           <div className="sidebar-zone">
-            {/* New Feature: Recent Action Module makes it feel alive */}
             <div
               className="action-card glass-panel fade-up"
               style={{ animationDelay: "0.2s" }}
@@ -179,8 +331,8 @@ export default function Dashboard({ onNavigate }) {
                 <div className="action-row">
                   <span className="action-icon">🎯</span>
                   <div className="action-text">
-                    <strong>Last ATS Scan</strong>
-                    <span>No CV uploaded yet</span>
+                    <strong>ATS Scanner</strong>
+                    <span>Ready for analysis</span>
                   </div>
                   <button
                     className="action-btn-small"
@@ -193,7 +345,7 @@ export default function Dashboard({ onNavigate }) {
                   <span className="action-icon">💼</span>
                   <div className="action-text">
                     <strong>Visa Matches</strong>
-                    <span>Ready to search</span>
+                    <span>Live data streaming</span>
                   </div>
                   <button
                     className="action-btn-small"
@@ -207,7 +359,7 @@ export default function Dashboard({ onNavigate }) {
 
             <div
               className="trust-card glass-panel fade-up"
-              style={{ animationDelay: "0.3s" }}
+              style={{ animationDelay: "0.25s" }}
             >
               <h3 className="trust-title">Why Arivo Works</h3>
               <ul className="trust-list">
@@ -233,7 +385,7 @@ export default function Dashboard({ onNavigate }) {
         {/* ── TOOLKIT GRID ── */}
         <div
           className="section-header fade-up"
-          style={{ animationDelay: "0.4s" }}
+          style={{ animationDelay: "0.3s" }}
         >
           <h2>Your Toolkit</h2>
           <div className="section-line"></div>
@@ -245,9 +397,10 @@ export default function Dashboard({ onNavigate }) {
               key={i}
               className="tool-card glass-panel fade-up"
               style={{
-                animationDelay: `${0.45 + i * 0.1}s`,
+                animationDelay: `${0.35 + i * 0.08}s`,
                 "--hover-color": t.color,
               }}
+              onMouseMove={handleMouseMove}
               onClick={() => onNavigate(t.page)}
             >
               <div
@@ -272,7 +425,7 @@ export default function Dashboard({ onNavigate }) {
         {/* ── PATHWAY ── */}
         <div
           className="section-header fade-up"
-          style={{ animationDelay: "0.6s" }}
+          style={{ animationDelay: "0.5s" }}
         >
           <h2>How to win with Arivo</h2>
           <div className="section-line"></div>
@@ -283,7 +436,7 @@ export default function Dashboard({ onNavigate }) {
             <div
               key={i}
               className="path-step glass-panel fade-up"
-              style={{ animationDelay: `${0.65 + i * 0.05}s` }}
+              style={{ animationDelay: `${0.55 + i * 0.05}s` }}
               onClick={() => onNavigate(step.page)}
             >
               <div className="step-number">{step.n}</div>
@@ -323,21 +476,12 @@ const styles = `
   pointer-events: none;
   z-index: 0;
 }
-.dash-grid-bg::after {
-  content: '';
-  position: absolute;
-  top: -20%; left: -10%;
-  width: 50vw; height: 50vw;
-  background: radial-gradient(circle, rgba(139, 92, 246, 0.08) 0%, transparent 60%);
-  border-radius: 50%;
-  pointer-events: none;
-}
 
 .dash-wrapper {
   position: relative;
   z-index: 1;
   padding: 3rem clamp(1.5rem, 5vw, 6rem) 5rem;
-  max-width: 1600px;
+  max-width: 1400px;
   margin: 0 auto;
 }
 
@@ -360,13 +504,13 @@ const styles = `
   animation: dashFadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
-/* Top Bar */
+/* Header */
 .dash-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
   gap: 2rem;
-  margin-bottom: 2.5rem;
+  margin-bottom: 2rem;
   flex-wrap: wrap;
 }
 .badge-subtle {
@@ -398,6 +542,171 @@ const styles = `
 .stat-lbl { font-size: 0.75rem; color: #8888aa; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 4px; }
 .stat-div { width: 1px; height: 30px; background: rgba(255,255,255,0.1); }
 
+/* ── DAILY 15-MINUTE BLUEPRINT STYLES ── */
+.blueprint-zone {
+  padding: 24px 28px;
+  margin-bottom: 2.5rem;
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.05), rgba(20, 20, 30, 0.4));
+}
+.blueprint-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.blueprint-tag {
+  font-size: 11px;
+  font-weight: 800;
+  color: #10B981;
+  letter-spacing: 0.08em;
+  display: inline-block;
+  margin-bottom: 6px;
+}
+.blueprint-title-wrap h2 {
+  margin: 0 0 4px;
+  font-size: 1.4rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.blueprint-title-wrap p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #8888aa;
+}
+.blueprint-progress {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 160px;
+}
+.progress-bar-bg {
+  width: 160px;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 99px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #8B5CF6, #10B981);
+  border-radius: 99px;
+  transition: width 0.4s ease;
+}
+.progress-text {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #10B981;
+}
+
+.blueprint-tasks {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.blueprint-task-card {
+  background: rgba(10, 10, 15, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 14px;
+  padding: 18px;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  transition: all 0.2s ease;
+}
+.blueprint-task-card:hover {
+  border-color: rgba(139, 92, 246, 0.3);
+  transform: translateY(-2px);
+}
+.blueprint-task-card.is-completed {
+  opacity: 0.55;
+  background: rgba(16, 185, 129, 0.03);
+  border-color: rgba(16, 185, 129, 0.2);
+}
+.task-checkbox {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-top: 2px;
+  font-size: 13px;
+  font-weight: 900;
+  color: #10B981;
+  transition: all 0.2s;
+}
+.blueprint-task-card.is-completed .task-checkbox {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: #10B981;
+}
+.task-info {
+  flex: 1;
+  min-width: 0;
+}
+.task-top-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.task-badge {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(139, 92, 246, 0.15);
+  color: #A78BFA;
+}
+.task-time {
+  font-size: 10px;
+  font-weight: 700;
+  color: #718096;
+}
+.task-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin: 0 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.task-desc {
+  font-size: 0.8rem;
+  color: #8888aa;
+  margin: 0;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.task-action-btn {
+  background: transparent;
+  border: none;
+  color: #8B5CF6;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  align-self: flex-end;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  transition: gap 0.2s;
+}
+.task-action-btn:hover {
+  gap: 8px;
+  color: #A78BFA;
+}
+
 /* Hero Zone */
 .hero-zone {
   display: grid;
@@ -422,7 +731,7 @@ const styles = `
   background: #F8FAFC; color: #030305;
   border: none; padding: 14px 24px; border-radius: 12px;
   font-size: 0.95rem; font-weight: 700; cursor: pointer;
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: 8px; justify-content: center;
   transition: all 0.2s ease;
   box-shadow: 0 0 20px rgba(255,255,255,0.1);
 }
@@ -430,13 +739,13 @@ const styles = `
 .btn-ghost {
   background: rgba(255,255,255,0.05); color: #E2E8F0;
   border: 1px solid rgba(255,255,255,0.1); padding: 14px 20px; border-radius: 12px;
-  font-size: 0.95rem; font-weight: 600; cursor: pointer;
-  transition: all 0.2s ease;
+  font-size: 0.95rem; font-weight: 600; cursor: pointer; justify-content: center;
+  transition: all 0.2s ease; display: flex; align-items: center;
 }
 .btn-ghost:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
 
-/* The Animated Orb */
-.spotlight-visual { position: relative; z-index: 1; flex-shrink: 0; padding-right: 2rem; }
+/* Animated Orb */
+.spotlight-visual { position: relative; z-index: 1; flex-shrink: 0; padding-right: 2rem; pointer-events: none; }
 .orb-container { position: relative; width: 140px; height: 140px; display: flex; align-items: center; justify-content: center; }
 .orb-ring { position: absolute; inset: 0; border-radius: 50%; border: 2px solid rgba(139, 92, 246, 0.3); }
 .ring-1 { animation: spin 8s linear infinite; border-top-color: #8B5CF6; border-right-color: transparent; }
@@ -497,10 +806,9 @@ const styles = `
   position: relative;
   overflow: hidden;
 }
-/* Hover Physics */
 .tool-card::before {
   content: ''; position: absolute; inset: 0;
-  background: radial-gradient(800px circle at var(--mouse-x) var(--mouse-y), var(--hover-color), transparent 40%);
+  background: radial-gradient(600px circle at var(--mouse-x) var(--mouse-y), var(--hover-color), transparent 40%);
   opacity: 0; transition: opacity 0.3s; z-index: 0; mix-blend-mode: overlay; pointer-events: none;
 }
 .tool-card:hover { transform: translateY(-4px); border-color: rgba(255,255,255,0.15); box-shadow: 0 20px 40px rgba(0,0,0,0.4); }
@@ -515,7 +823,7 @@ const styles = `
 /* Path Grid */
 .path-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 1rem;
 }
 .path-step {
@@ -529,17 +837,36 @@ const styles = `
 .step-label { font-size: 0.95rem; font-weight: 700; margin: 0 0 6px; }
 .step-sub { font-size: 0.8rem; color: #718096; margin: 0; line-height: 1.4; }
 
-/* Responsive Adjustments */
+/* ── MOBILE OPTIMIZATIONS ── */
 @media (max-width: 1024px) {
   .hero-zone { grid-template-columns: 1fr; }
   .spotlight-card { padding: 2rem; }
+  .blueprint-tasks { grid-template-columns: 1fr; }
 }
+
 @media (max-width: 768px) {
-  .dash-header { flex-direction: column; align-items: flex-start; }
-  .stats-pill { width: 100%; justify-content: space-between; }
+  .dash-wrapper { padding: 2rem 1.25rem 5rem; }
+  .dash-header { flex-direction: column; align-items: flex-start; gap: 1.5rem; }
+  .stats-pill { width: 100%; flex-wrap: wrap; justify-content: center; padding: 16px; gap: 12px; }
+  .stat-block { width: 45%; align-items: center; text-align: center; }
   .stat-div { display: none; }
-  .spotlight-card { flex-direction: column; text-align: center; }
-  .spotlight-actions { justify-content: center; }
-  .spotlight-visual { display: none; }
+  
+  .blueprint-zone { padding: 20px 16px; }
+  .blueprint-header { flex-direction: column; gap: 16px; }
+  .blueprint-progress { align-items: flex-start; width: 100%; }
+  .progress-bar-bg { width: 100%; }
+  
+  .spotlight-card { flex-direction: column; text-align: left; padding: 2rem 1.5rem; }
+  .spotlight-actions { flex-direction: column; width: 100%; }
+  .btn-primary, .btn-ghost { width: 100%; }
+  .spotlight-content { z-index: 2; width: 100%; }
+  .spotlight-visual { 
+    position: absolute; 
+    right: -40px; 
+    bottom: -40px; 
+    opacity: 0.2; 
+    padding: 0; 
+    transform: scale(0.8);
+  }
 }
 `;
