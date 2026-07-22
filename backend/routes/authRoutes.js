@@ -1,35 +1,35 @@
 const express = require("express");
-
-// express.Router() creates a mini application
-// capable of performing middleware and routing
-// Think of it as a section of your API
 const router = express.Router();
-
-// Import the controller functions we just built
-const { register, login, getMe } = require("../controllers/authController");
-
-// Import the auth middleware to protect private routes
 const { protect } = require("../middleware/auth");
 
-// ─────────────────────────────────────────────
-// PUBLIC ROUTES — no token needed
-// Anyone can hit these endpoints
-// ─────────────────────────────────────────────
+// Import all the controller functions (including the new OAuth ones)
+const {
+  register,
+  login,
+  getMe,
+  googleAuth,
+  googleCallback,
+  linkedinAuth,
+  linkedinCallback
+} = require("../controllers/authController");
 
-// POST /api/auth/register → runs register function
+// ─────────────────────────────────────────────
+// STANDARD AUTH
+// ─────────────────────────────────────────────
 router.post("/register", register);
-
-// POST /api/auth/login → runs login function
 router.post("/login", login);
-
-// ─────────────────────────────────────────────
-// PRIVATE ROUTES — token required
-// protect middleware runs first
-// if token valid → getMe runs
-// if token invalid → 401 returned immediately
-// ─────────────────────────────────────────────
-
-// GET /api/auth/me → runs protect then getMe
 router.get("/me", protect, getMe);
+
+// ─────────────────────────────────────────────
+// GOOGLE OAUTH
+// ─────────────────────────────────────────────
+router.get("/google", googleAuth);
+router.get("/google/callback", googleCallback);
+
+// ─────────────────────────────────────────────
+// LINKEDIN OAUTH
+// ─────────────────────────────────────────────
+router.get("/linkedin", linkedinAuth);
+router.get("/linkedin/callback", linkedinCallback);
 
 module.exports = router;

@@ -1,126 +1,56 @@
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const axios = require("axios");
 
 // ─────────────────────────────────────────────
-// REGISTER — creates a new user account
-// Called when someone signs up for Arivo AI
+// STANDARD EMAIL/PASSWORD AUTH
 // ─────────────────────────────────────────────
 const register = async (req, res) => {
   try {
-    // Pull the fields out of the request body
-    // This is what the frontend sends us
     const { name, email, password, nationality, university, course, targetRole } = req.body;
-
-    // Check if a user with this email already exists
-    // We never want two accounts with the same email
     const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ message: "Email already registered" });
-    }
 
-    // Hash the password before saving to database
-    // bcrypt adds a random salt and hashes 10 times
-    // This means even if database is hacked — passwords are safe
-    // NEVER store plain text passwords — ever
+    if (existingUser) return res.status(400).json({ message: "Email already registered" });
+
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // Create the new user in MongoDB
     const user = await User.create({
-      name,
-      email,
-      password: hashedPassword, // store hashed version only
-      nationality,
-      university,
-      course,
-      targetRole,
+      name, email, password: hashedPassword,
+      nationality, university, course, targetRole,
     });
 
-    // Create a JWT token for this user
-    // Token contains user id and expires in 7 days
-    // Frontend stores this token and sends it with every request
-    const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
-    // Return the token and basic user info
-    // Frontend uses this to know who is logged in
-    res.status(201).json({
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        targetRole: user.targetRole,
-      },
-    });
-
+    res.status(201).json({ token, user: { id: user._id, name: user.name, email: user.email, targetRole: user.targetRole } });
   } catch (error) {
-    // If anything goes wrong — return a clean error message
-    // Never expose the raw error to the client in production
     console.error("Register error:", error.message);
     res.status(500).json({ message: "Server error during registration" });
   }
 };
 
-// ─────────────────────────────────────────────
-// LOGIN — checks credentials and returns token
-// Called when an existing user signs in
-// ─────────────────────────────────────────────
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    // Find user by email in MongoDB
     const user = await User.findOne({ email });
-    if (!user) {
-      // Use vague message intentionally — 
-      // never confirm whether an email exists or not
-      return res.status(400).json({ message: "Invalid credentials" });
-    }
 
-    // Compare the plain text password with the hashed one
-    // bcrypt.compare handles the unhashing internally
+    if (!user) return res.status(400).json({ message: "Invalid credentials" });
+
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ message: "Invalid credentials" });
-    }
+    if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
 
-    // Password is correct — create a new JWT token
-    const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
-    // Return token and user info to frontend
-    res.status(200).json({
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        targetRole: user.targetRole,
-      },
-    });
-
+    res.status(200).json({ token, user: { id: user._id, name: user.name, email: user.email, targetRole: user.targetRole } });
   } catch (error) {
     console.error("Login error:", error.message);
     res.status(500).json({ message: "Server error during login" });
   }
 };
 
-// ─────────────────────────────────────────────
-// GET ME — returns the current logged in user
-// Called when frontend needs to verify who is logged in
-// ─────────────────────────────────────────────
 const getMe = async (req, res) => {
   try {
-    // req.user.id comes from the auth middleware
-    // We find the user but exclude the password field
     const user = await User.findById(req.user.id).select("-password");
     res.status(200).json(user);
   } catch (error) {
@@ -129,5 +59,113 @@ const getMe = async (req, res) => {
   }
 };
 
-// Export all three functions so routes can use them
-module.exports = { register, login, getMe };
+// ─────────────────────────────────────────────
+// GOOGLE OAUTH
+// ─────────────────────────────────────────────
+const googleAuth = (req, res) => {
+  // Forced fallback to 5001
+  const backendUrl = process.env.BACKEND_URL || "http://localhost:5001";
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${process.env.GOOGLE_CLIENT_ID}&redirect_uri=${backendUrl}/api/auth/google/callback&response_type=code&scope=profile email`;
+  res.redirect(url);
+};
+
+const googleCallback = async (req, res) => {
+  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+  const backendUrl = process.env.BACKEND_URL || "http://localhost:5001";
+
+  try {
+    const { code } = req.query;
+
+    const { data } = await axios.post('https://oauth2.googleapis.com/token', {
+      client_id: process.env.GOOGLE_CLIENT_ID,
+      client_secret: process.env.GOOGLE_CLIENT_SECRET,
+      code,
+      redirect_uri: `${backendUrl}/api/auth/google/callback`,
+      grant_type: 'authorization_code',
+    });
+
+    const userRes = await axios.get('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${data.access_token}` },
+    });
+
+    const { email, name } = userRes.data;
+
+    let user = await User.findOne({ email });
+    if (!user) {
+      const salt = await bcrypt.genSalt(10);
+      const randomSecurePassword = await bcrypt.hash(Math.random().toString(36).slice(-12), salt);
+      user = await User.create({
+        name, email, password: randomSecurePassword, targetRole: "Software Engineer",
+      });
+    }
+
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
+    res.redirect(`${frontendUrl}?token=${token}`);
+
+  } catch (error) {
+    console.error("Google Auth Error:", error.message);
+    res.redirect(`${frontendUrl}?error=oauth_failed`);
+  }
+};
+
+// ─────────────────────────────────────────────
+// LINKEDIN OAUTH (UPDATED TO OPENID CONNECT)
+// ─────────────────────────────────────────────
+const linkedinAuth = (req, res) => {
+  // Forced fallback to 5001
+  const backendUrl = process.env.BACKEND_URL || "http://localhost:5001";
+  // Updated scope to use OpenID Connect
+  const url = `https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=${process.env.LINKEDIN_CLIENT_ID}&redirect_uri=${backendUrl}/api/auth/linkedin/callback&state=foobar&scope=openid%20profile%20email`;
+  res.redirect(url);
+};
+
+const linkedinCallback = async (req, res) => {
+  const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+  const backendUrl = process.env.BACKEND_URL || "http://localhost:5001";
+
+  try {
+    const { code } = req.query;
+
+    // 1. Exchange code for token
+    const tokenRes = await axios.post('https://www.linkedin.com/oauth/v2/accessToken', null, {
+      params: {
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: `${backendUrl}/api/auth/linkedin/callback`,
+        client_id: process.env.LINKEDIN_CLIENT_ID,
+        client_secret: process.env.LINKEDIN_CLIENT_SECRET,
+      },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+    });
+
+    const accessToken = tokenRes.data.access_token;
+
+    // 2. Fetch profile using the new OpenID Connect endpoint
+    const profileRes = await axios.get('https://api.linkedin.com/v2/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+
+    const name = profileRes.data.name;
+    const email = profileRes.data.email;
+
+    // 3. Find or Create User
+    let user = await User.findOne({ email });
+    if (!user) {
+      const salt = await bcrypt.genSalt(10);
+      const randomSecurePassword = await bcrypt.hash(Math.random().toString(36).slice(-12), salt);
+      user = await User.create({
+        name, email, password: randomSecurePassword, targetRole: "Software Engineer",
+      });
+    }
+
+    // 4. Generate JWT
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
+    res.redirect(`${frontendUrl}?token=${token}`);
+
+  } catch (error) {
+    console.error("LinkedIn Auth Error:", error.response ? error.response.data : error.message);
+    res.redirect(`${frontendUrl}?error=oauth_failed`);
+  }
+};
+
+module.exports = { register, login, getMe, googleAuth, googleCallback, linkedinAuth, linkedinCallback };

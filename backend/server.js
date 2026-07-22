@@ -7,106 +7,117 @@ const path = require("path");
 const connectDB = require("./config/db");
 
 // ─────────────────────────────────────────────
-// LOAD ENV VARIABLES
-// In Docker: env vars are injected directly by
-// docker-compose — no .env file exists in the
-// container (blocked by .dockerignore for security).
-// Locally: we read the .env file manually because
-// Anaconda breaks the standard dotenv approach.
-//
-// This guard handles both cases cleanly:
-// - Docker: file doesn't exist → skip, use injected vars
-// - Local:  file exists → read and load it
+// LOAD ENV VARIABLES (Bulletproof Local Parser)
+// Handles Anaconda conflicts, Windows CRLF line endings,
+// and strips surrounding quotes (" / ') from values.
 // ─────────────────────────────────────────────
 const envPath = path.join(__dirname, ".env");
 if (fs.existsSync(envPath)) {
   const envFile = fs.readFileSync(envPath, "utf8");
-  envFile.split("\n").forEach(line => {
+  envFile.split(/\r?\n/).forEach((line) => {
     const trimmed = line.trim();
-    // Skip empty lines and comments starting with #
+    // Skip empty lines and comments
     if (trimmed && !trimmed.startsWith("#")) {
-      // Split on first = only — values may contain = signs
       const [key, ...valueParts] = trimmed.split("=");
-      process.env[key.trim()] = valueParts.join("=").trim();
+      if (key) {
+        let val = valueParts.join("=").trim();
+        // Remove surrounding single or double quotes if present
+        if (
+          (val.startsWith('"') && val.endsWith('"')) ||
+          (val.startsWith("'") && val.endsWith("'"))
+        ) {
+          val = val.slice(1, -1);
+        }
+        process.env[key.trim()] = val;
+      }
     }
   });
-  console.log("Loaded env from .env file (local mode)");
+  console.log("✅ Loaded env from .env file (Local mode)");
 } else {
-  console.log("No .env file found — using injected environment variables (Docker mode)");
+  console.log("🐳 No .env file found — using injected environment variables (Docker mode)");
 }
 
 // ─────────────────────────────────────────────
 // CONNECT TO MONGODB
-// This runs once when server starts
-// If connection fails — server shuts down
 // ─────────────────────────────────────────────
 connectDB();
 
-// Create the Express application
+// Initialize Express App
 const app = express();
 
 // ─────────────────────────────────────────────
-// MIDDLEWARE — runs on every single request
-// Order matters — these run top to bottom
+// MIDDLEWARE
 // ─────────────────────────────────────────────
 
-// helmet adds security headers to every response
-// Protects against common web vulnerabilities
+// Helmet adds security headers in production
 if (process.env.NODE_ENV === "production") {
-  app.use(helmet());
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: "cross-origin" }, // Prevents blocking static uploads/PDF previews
+    })
+  );
 }
 
-// cors allows our React frontend to talk to this server
-// Without this — browser blocks all frontend requests
+// CORS configuration for local dev and production
 app.use(
   cors({
     origin: [
       "http://localhost:5173",
       "http://localhost:3000",
-      process.env.FRONTEND_URL, // real Vercel domain, set in Render dashboard
+      process.env.FRONTEND_URL, // e.g. Vercel deployment URL
     ].filter(Boolean),
     credentials: true,
   })
 );
 
-// morgan logs every request to the console
-// e.g. POST /api/auth/login 200 45ms
-// Extremely useful for debugging
+// Logging
 app.use(morgan("dev"));
 
-// express.json() parses incoming JSON request bodies
-// Without this — req.body would be undefined everywhere
+// Request Parsers
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // ─────────────────────────────────────────────
-// ROUTES — connect URL paths to route handlers
+// ROUTES
 // ─────────────────────────────────────────────
 
-// All auth routes start with /api/auth
-// e.g. /api/auth/register → register function
-//      /api/auth/login    → login function
-//      /api/auth/me       → getMe function (protected)
+// Auth Routes (Register, Login, Me, Google & LinkedIn OAuth)
 app.use("/api/auth", require("./routes/authRoutes"));
 
-// CV routes — upload and analyse CVs
+// CV Routes (Upload & Processing)
 app.use("/api/cv", require("./routes/cvRoutes"));
 
-// ─────────────────────────────────────────────
-// HEALTH CHECK — confirms server is running
-// Hit GET / to verify everything is working
-// ─────────────────────────────────────────────
+// Health Check Endpoint
 app.get("/", (req, res) => {
-  res.json({ message: "Arivo AI Backend is running" });
+  res.json({
+    status: "online",
+    message: "Arivo AI Backend is running",
+    timestamp: new Date().toISOString(),
+  });
 });
 
 // ─────────────────────────────────────────────
-// START SERVER — listen for incoming requests
-// Uses PORT from .env or defaults to 5001
-// 0.0.0.0 is required in Docker — without it the
-// server only listens inside the container and
-// nothing outside can reach it
+// ERROR HANDLING MIDDLEWARE
+// ─────────────────────────────────────────────
+
+// 404 Handler for unknown routes
+app.use((req, res, next) => {
+  res.status(404).json({ message: `Route not found: ${req.originalUrl}` });
+});
+
+// Global Error Handler
+app.use((err, req, res, next) => {
+  console.error("🔥 Global Error Handler Caught:", err.stack || err.message);
+  res.status(err.status || 500).json({
+    message: err.message || "Internal Server Error",
+  });
+});
+
+// ─────────────────────────────────────────────
+// START SERVER
 // ─────────────────────────────────────────────
 const PORT = process.env.PORT || 5001;
+
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Arivo AI Backend running on port ${PORT}`);
+  console.log(`🚀 Arivo AI Backend listening on http://localhost:${PORT}`);
 });

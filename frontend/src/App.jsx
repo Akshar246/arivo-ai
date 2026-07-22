@@ -5,15 +5,12 @@ import Dashboard from "./pages/Dashboard";
 import Jobs from "./pages/Jobs";
 import Profile from "./pages/Profile";
 import Chat from "./components/Chat";
-import "./App.css";
 import Landing from "./pages/Landing";
 import ATS from "./pages/ATS";
+import "./App.css";
 
 // ─────────────────────────────────────────────
 // NAVIGATION BAR
-// Defined outside AppRouter so React does not
-// recreate it on every render — avoids errors
-// Receives page and setPage as props
 // ─────────────────────────────────────────────
 function NavBar({ page, setPage }) {
   const { logout } = useAuth();
@@ -33,7 +30,6 @@ function NavBar({ page, setPage }) {
         zIndex: 100,
       }}
     >
-      {/* Logo — clicking takes you home */}
       <div
         onClick={() => setPage("dashboard")}
         style={{
@@ -48,7 +44,6 @@ function NavBar({ page, setPage }) {
         Arivo AI
       </div>
 
-      {/* Right side — nav links + logout grouped together */}
       <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
         {[
           { id: "dashboard", label: "Home" },
@@ -78,7 +73,6 @@ function NavBar({ page, setPage }) {
           </button>
         ))}
 
-        {/* Divider */}
         <div
           style={{
             width: "1px",
@@ -88,7 +82,6 @@ function NavBar({ page, setPage }) {
           }}
         />
 
-        {/* Logout */}
         <button
           onClick={logout}
           title="Log out"
@@ -137,17 +130,13 @@ function NavBar({ page, setPage }) {
 
 // ─────────────────────────────────────────────
 // APP ROUTER
-// Checks if user is logged in
-// If not — shows Login page
-// If yes — shows navbar and correct page
 // ─────────────────────────────────────────────
 function AppRouter() {
   const { currentUser } = useAuth();
   const [page, setPage] = useState("dashboard");
-
-  // Not logged in — show login page
   const [showLanding, setShowLanding] = useState(true);
 
+  // Not logged in — route to Landing or Login
   if (!currentUser) {
     if (showLanding) {
       return <Landing onGetStarted={() => setShowLanding(false)} />;
@@ -155,17 +144,13 @@ function AppRouter() {
     return <Login onLogin={() => setPage("dashboard")} />;
   }
 
-  // ─────────────────────────────────────────────
-  // RENDER CORRECT PAGE
-  // Switch statement picks the right component
-  // based on current page state
-  // ─────────────────────────────────────────────
+  // Logged in — Render the correct protected page
   const renderPage = () => {
     switch (page) {
       case "dashboard":
         return <Dashboard onNavigate={setPage} />;
       case "jobs":
-        return <Jobs />;
+        return <Jobs onNavigate={setPage} />;
       case "chat":
         return <Chat />;
       case "profile":
@@ -178,17 +163,8 @@ function AppRouter() {
   };
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#0f0f1a",
-        color: "#fff",
-      }}
-    >
-      {/* Navbar stays at top on every page */}
+    <div style={{ minHeight: "100vh", background: "#0f0f1a", color: "#fff" }}>
       <NavBar page={page} setPage={setPage} />
-
-      {/* Page content renders below navbar */}
       {renderPage()}
     </div>
   );
@@ -196,8 +172,6 @@ function AppRouter() {
 
 // ─────────────────────────────────────────────
 // MAIN APP
-// AuthProvider wraps everything so every page
-// can access currentUser and token anywhere
 // ─────────────────────────────────────────────
 function App() {
   return (
