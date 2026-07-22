@@ -176,7 +176,7 @@ def is_sponsor(company_name, sponsors_set):
 # Fetches real current jobs for ANY role or field
 # Checks each job against Home Office data
 # ─────────────────────────────────────────────
-def fetch_live_jobs(query, max_results=10, location="london", full_time=None, part_time=None, category=None):
+def fetch_live_jobs(query, max_results=50, location="london", full_time=None, part_time=None, category=None):
     try:
         app_id = os.getenv("ADZUNA_APP_ID")
         api_key = os.getenv("ADZUNA_API_KEY")
@@ -284,7 +284,7 @@ def fetch_live_jobs(query, max_results=10, location="london", full_time=None, pa
 # Step 4 — Store new results for next time
 # Step 5 — Return the best results
 # ─────────────────────────────────────────────
-def hybrid_job_search(query, k=5, location="london", full_time=None, part_time=None, category=None):
+def hybrid_job_search(query, k=50, location="london", full_time=None, part_time=None, category=None):
 
     # Step 1 — Search ChromaDB with SCORES
     results_with_scores = vectorstore.similarity_search_with_score(query, k=k)
@@ -996,12 +996,15 @@ def ats_analyse(request: ATSRequest):
 
     overall = sum(c["score"] for c in categories)
 
+    recruiter_notes = generate_recruiter_notes(cv, jd, overall, missing_keywords, weak_bullets)
+
     return {
         "overall_score": overall,
         "categories": categories,
         "missing_keywords": missing_keywords,
         "weak_bullets": weak_bullets,
         "international_lens": international_lens,
+        "recruiter_notes": recruiter_notes,
     }
 
 
