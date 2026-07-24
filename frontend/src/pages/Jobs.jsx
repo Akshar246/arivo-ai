@@ -292,6 +292,30 @@ function ListCard({ job, active, saved, onSelect, onToggleSave }) {
 
 // ── Detail panel (the in-app description view) ────────────────
 function Detail({ job, saved, onToggleSave, onClose, onScan, onNavigate }) {
+  const [recheckLoading, setRecheckLoading] = useState(false);
+  const [recheckResult, setRecheckResult] = useState(null);
+
+  const recheckJob = async () => {
+    setRecheckLoading(true);
+    setRecheckResult(null);
+    try {
+      const res = await axios.post(
+        `${import.meta.env.VITE_AI_URL}/jobs/recheck`,
+        {
+          title: job.title,
+          company: job.company,
+          location: "london",
+        },
+      );
+      setRecheckResult(res.data);
+    } catch {
+      setRecheckResult({
+        still_live: null,
+        message: "Couldn't check right now — try again shortly.",
+      });
+    }
+    setRecheckLoading(false);
+  };
   // UNIQUE FEATURE: Application Intelligence Dashboard when empty
   if (!job) {
     return (
@@ -437,6 +461,25 @@ function Detail({ job, saved, onToggleSave, onClose, onScan, onNavigate }) {
         </div>
       </div>
 
+      {job.savedAt && (
+        <div className="aj-recheck">
+          <button
+            className="aj-recheck-btn"
+            onClick={recheckJob}
+            disabled={recheckLoading}
+          >
+            {recheckLoading ? "Checking…" : "🔄 Recheck if this is still live"}
+          </button>
+          {recheckResult && (
+            <div
+              className={`aj-recheck-result ${recheckResult.still_live ? "is-live" : "is-gone"}`}
+            >
+              {recheckResult.message}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="aj-section-h">Role Description</div>
       {hasDesc ? (
         <div className="aj-desc-body">
@@ -477,7 +520,7 @@ export default function Jobs({ onNavigate }) {
   const [savedJobs, setSavedJobs] = useState(() => readLS(SAVED_KEY, []));
   const [recent, setRecent] = useState(() => readLS(RECENT_KEY, []));
   const [selectedKey, setSelectedKey] = useState(null);
-
+  const [viewTab, setViewTab] = useState("results");
   // ZERO-CLICK AUTO-FEED FEATURE (ESLint Strict Fix)
   useEffect(() => {
     let isMounted = true;
@@ -578,10 +621,13 @@ export default function Jobs({ onNavigate }) {
       isPartial: true,
     };
     sessionStorage.setItem("arivo_pending_scan", JSON.stringify(payload));
+    if (job.url) window.open(job.url, "_blank");
     if (onNavigate) onNavigate("ats");
   };
 
-  const filtered = visaOnly ? jobs.filter((j) => j.visa_sponsor) : jobs;
+  const baseList = viewTab === "saved" ? savedJobs : jobs;
+  const filtered = visaOnly ? baseList.filter((j) => j.visa_sponsor) : baseList;
+
   const displayed =
     sortBy === "sponsors"
       ? [...filtered].sort(
@@ -634,6 +680,21 @@ export default function Jobs({ onNavigate }) {
             disabled={loading}
           >
             {loading ? "Scanning..." : "Search Market"}
+          </button>
+        </div>
+
+        <div className="aj-view-tabs">
+          <button
+            className={viewTab === "results" ? "active" : ""}
+            onClick={() => setViewTab("results")}
+          >
+            Results {jobs.length > 0 ? `(${jobs.length})` : ""}
+          </button>
+          <button
+            className={viewTab === "saved" ? "active" : ""}
+            onClick={() => setViewTab("saved")}
+          >
+            ⭐ Saved {savedJobs.length > 0 ? `(${savedJobs.length})` : ""}
           </button>
         </div>
 
@@ -796,6 +857,19 @@ const styles = `
 .aj-detail-col { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; height: calc(100vh - 280px); overflow-y: auto; position: sticky; top: 140px; scrollbar-width: none; }
 .aj-detail-inner { padding: 40px; }
 .aj-detail-back { display: none; }
+
+.aj-recheck { margin-bottom: 24px; }
+.aj-recheck-btn { display: inline-flex; align-items: center; gap: 8px; background: transparent; border: 1px solid var(--border); color: var(--tx2); padding: 10px 18px; border-radius: 12px; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+.aj-recheck-btn:hover { border-color: var(--teal); color: var(--teal); }
+.aj-recheck-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.aj-recheck-result { margin-top: 10px; padding: 12px 16px; border-radius: 10px; font-size: 13px; line-height: 1.5; }
+.aj-recheck-result.is-live { background: rgba(0, 212, 170, 0.08); border: 1px solid rgba(0, 212, 170, 0.25); color: var(--teal); }
+.aj-recheck-result.is-gone { background: rgba(245, 196, 81, 0.08); border: 1px solid rgba(245, 196, 81, 0.25); color: #f5c451; }
+
+.aj-view-tabs { display: flex; gap: 8px; margin: 16px 0; }
+.aj-view-tabs button { background: transparent; border: 1px solid var(--border); color: var(--tx2); padding: 8px 18px; border-radius: 99px; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+.aj-view-tabs button:hover { border-color: var(--teal); color: var(--tx); }
+.aj-view-tabs button.active { background: var(--teal); color: #000; border-color: var(--teal); }
 
 /* Empty States */
 .aj-detail-empty { padding: 40px; display: flex; flex-direction: column; gap: 24px; height: 100%; justify-content: center; }
