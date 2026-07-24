@@ -445,6 +445,14 @@ function Invite(props) {
     extracting,
     onShowRaw,
   } = props;
+  const jobTextRef = useRef(null);
+
+  useEffect(() => {
+    if (isPartial && jobTextRef.current) {
+      jobTextRef.current.focus();
+      jobTextRef.current.select();
+    }
+  }, [isPartial]);
   const jobReady = jobText.trim().length > 80;
   const cvReady = !!file || !!extractedText;
   const bothReady = jobReady && cvReady;
@@ -489,6 +497,7 @@ function Invite(props) {
               </div>
             )}
             <textarea
+              ref={jobTextRef}
               className="ats-textarea"
               placeholder="Paste the full job posting here..."
               value={jobText}
