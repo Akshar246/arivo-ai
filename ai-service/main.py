@@ -176,7 +176,48 @@ def is_sponsor(company_name, sponsors_set):
 # Fetches real current jobs for ANY role or field
 # Checks each job against Home Office data
 # ─────────────────────────────────────────────
-def fetch_live_jobs(query, max_results=50, location="london", full_time=None, part_time=None, category=None):
+def rescue_sponsor_via_reed(title, company, location="london"):
+    # ─────────────────────────────────────────────
+    # SPONSOR RESCUE VIA REED
+    # Called only when Adzuna's display name failed to match the
+    # register — e.g. "Trainline" vs the register's "Trainline.com
+    # Ltd". Searches Reed for the same role, and if a close match is
+    # found, hands back Reed's version of the company name so it can
+    # be checked against the register too. Two sources, two chances
+    # at the real legal name, before we honestly say "not confirmed."
+    # ─────────────────────────────────────────────
+    try:
+        reed_key = os.getenv("REED_API_KEY")
+        if not reed_key:
+            return None
+
+        url = "https://www.reed.co.uk/api/1.0/search"
+        params = {
+            "keywords": title,
+            "locationName": location or "london",
+            "resultsToTake": 5,
+        }
+        response = http_requests.get(url, params=params, auth=(reed_key, ""))
+        if response.status_code != 200:
+            return None
+
+        results = response.json().get("results", [])
+        title_low = title.lower()
+        for r in results:
+            reed_title = (r.get("jobTitle") or "").lower()
+            # Loose title match — good enough since this only runs on
+            # jobs that already failed the Adzuna-name check, low risk
+            # of a false rescue on an unrelated role.
+            if title_low[:20] in reed_title or reed_title[:20] in title_low:
+                return r.get("employerName", "")
+        return None
+
+    except Exception as e:
+        print(f"Reed rescue error: {e}")
+        return None
+
+
+def fetch_live_jobs(query, max_results=10, location="london", full_time=None, part_time=None, category=None):
     try:
         app_id = os.getenv("ADZUNA_APP_ID")
         api_key = os.getenv("ADZUNA_API_KEY")
@@ -186,7 +227,7 @@ def fetch_live_jobs(query, max_results=50, location="london", full_time=None, pa
             "app_id": app_id,
             "app_key": api_key,
             "results_per_page": max_results,
-            "what": query,  # the clean job role search term
+            "what": query,
             "where": location or "london",
             "content-type": "application/json",
         }
@@ -206,7 +247,6 @@ def fetch_live_jobs(query, max_results=50, location="london", full_time=None, pa
         jobs = response.json().get("results", [])
         documents = []
 
-        # Load sponsor list to verify visa sponsorship
         sponsors = load_sponsors_quick()
 
         for job in jobs:
@@ -215,17 +255,31 @@ def fetch_live_jobs(query, max_results=50, location="london", full_time=None, pa
             job_location = job.get("location", {}).get("display_name", location or "London")
             salary_min = job.get("salary_min", 0)
             salary_max = job.get("salary_max", 0)
-            description = job.get("description", "")[:300]
+            raw_desc = job.get("description", "") or ""
+            raw_desc = raw_desc.strip()
+            if raw_desc.lower().startswith("description"):
+                raw_desc = raw_desc[len("description"):].lstrip(" :–-")
+            description = raw_desc[:300]
+            if len(raw_desc) > 300:
+                description = description.rsplit(" ", 1)[0].rstrip(".,;: ") + "…"
             job_url = job.get("redirect_url", "")
 
             created = job.get("created", "")
             contract_time = job.get("contract_time", "")
             contract_type = job.get("contract_type", "")
 
-            # Check against official Home Office data
+            # Check against official Home Office data — try Adzuna's
+            # name first, and if that fails, give Reed's name a shot
+            # too before honestly calling it unconfirmed.
             visa_sponsor = is_sponsor(company, sponsors)
+            sponsor_verified_via = "adzuna" if visa_sponsor else None
 
-            # Format salary range nicely
+            if not visa_sponsor:
+                reed_company = rescue_sponsor_via_reed(title, company, location)
+                if reed_company and is_sponsor(reed_company, sponsors):
+                    visa_sponsor = True
+                    sponsor_verified_via = "reed_name_variant"
+
             if salary_min and salary_max:
                 salary = f"£{int(salary_min):,} - £{int(salary_max):,}"
             elif salary_min:
@@ -233,9 +287,6 @@ def fetch_live_jobs(query, max_results=50, location="london", full_time=None, pa
             else:
                 salary = "Salary not specified"
 
-            # Infer remote/hybrid/on-site from title + description.
-            # Adzuna has no native field for this — best-effort keyword
-            # match, not a guaranteed signal, labelled as such in the UI.
             blob = f"{title} {description}".lower()
             if "hybrid" in blob:
                 work_mode = "hybrid"
@@ -244,7 +295,6 @@ def fetch_live_jobs(query, max_results=50, location="london", full_time=None, pa
             else:
                 work_mode = "onsite"
 
-            # Create a Document for ChromaDB storage
             doc = Document(
                 page_content=f"{company} | {title} | {job_location} | {salary} | {'Official Tier 2 Visa Sponsor' if visa_sponsor else 'Sponsorship not confirmed'} | {description}",
                 metadata={
@@ -253,6 +303,7 @@ def fetch_live_jobs(query, max_results=50, location="london", full_time=None, pa
                     "location": job_location,
                     "salary": salary,
                     "visa_sponsor": visa_sponsor,
+                    "sponsor_verified_via": sponsor_verified_via,
                     "url": job_url,
                     "source": "adzuna_live",
                     "fetched_at": datetime.now().strftime("%Y-%m-%d"),
@@ -271,6 +322,91 @@ def fetch_live_jobs(query, max_results=50, location="london", full_time=None, pa
     except Exception as e:
         print(f"Live fetch error: {e}")
         return []
+    
+def fetch_reed_jobs(query, max_results=6, location="london"):
+    # ─────────────────────────────────────────────
+    # SECOND LIVE SOURCE FOR SEARCH RESULTS — not just sponsor
+    # rescue. Adzuna is an aggregator and doesn't carry everything;
+    # blending in Reed's own listings means more real nursing,
+    # teaching, and finance roles show up, not just more tech.
+    # Duplicate postings across both sources get collapsed by the
+    # existing company+title dedup in /jobs/search — no new logic
+    # needed there.
+    # ─────────────────────────────────────────────
+    try:
+        reed_key = os.getenv("REED_API_KEY")
+        if not reed_key:
+            return []
+
+        url = "https://www.reed.co.uk/api/1.0/search"
+        params = {
+            "keywords": query,
+            "locationName": location or "london",
+            "resultsToTake": max_results,
+        }
+        response = http_requests.get(url, params=params, auth=(reed_key, ""))
+        if response.status_code != 200:
+            print(f"Reed error: {response.status_code}")
+            return []
+
+        results = response.json().get("results", [])
+        sponsors = load_sponsors_quick()
+        documents = []
+
+        for job in results:
+            company = job.get("employerName", "Unknown")
+            title = job.get("jobTitle", "Unknown")
+            job_location = job.get("locationName", location or "London")
+            salary_min = job.get("minimumSalary")
+            salary_max = job.get("maximumSalary")
+            description = (job.get("jobDescription") or "")[:300]
+            job_url = job.get("jobUrl", "")
+            created = job.get("date", "")
+
+            visa_sponsor = is_sponsor(company, sponsors)
+
+            if salary_min and salary_max:
+                salary = f"£{int(salary_min):,} - £{int(salary_max):,}"
+            elif salary_min:
+                salary = f"£{int(salary_min):,}+"
+            else:
+                salary = "Salary not specified"
+
+            blob = f"{title} {description}".lower()
+            if "hybrid" in blob:
+                work_mode = "hybrid"
+            elif "remote" in blob or "work from home" in blob or "wfh" in blob:
+                work_mode = "remote"
+            else:
+                work_mode = "onsite"
+
+            doc = Document(
+                page_content=f"{company} | {title} | {job_location} | {salary} | {'Official Tier 2 Visa Sponsor' if visa_sponsor else 'Sponsorship not confirmed'} | {description}",
+                metadata={
+                    "company": company,
+                    "title": title,
+                    "location": job_location,
+                    "salary": salary,
+                    "visa_sponsor": visa_sponsor,
+                    "sponsor_verified_via": "adzuna" if visa_sponsor else None,
+                    "url": job_url,
+                    "source": "reed_live",
+                    "fetched_at": datetime.now().strftime("%Y-%m-%d"),
+                    "description": description,
+                    "created": created,
+                    "contract_time": "",
+                    "contract_type": "",
+                    "work_mode": work_mode,
+                },
+            )
+            documents.append(doc)
+
+        print(f"Fetched {len(documents)} live jobs from Reed for: {query}")
+        return documents
+
+    except Exception as e:
+        print(f"Reed fetch error: {e}")
+        return []
 
 
 # ─────────────────────────────────────────────
@@ -284,32 +420,25 @@ def fetch_live_jobs(query, max_results=50, location="london", full_time=None, pa
 # Step 4 — Store new results for next time
 # Step 5 — Return the best results
 # ─────────────────────────────────────────────
-def hybrid_job_search(query, k=50, location="london", full_time=None, part_time=None, category=None):
+
+def hybrid_job_search(query, k=5, location="london", full_time=None, part_time=None, category=None):
 
     # Step 1 — Search ChromaDB with SCORES
     results_with_scores = vectorstore.similarity_search_with_score(query, k=k)
 
-    # Only keep results that are actually relevant
     fresh_results = []
     cutoff_date = datetime.now() - timedelta(days=30)
 
     for doc, score in results_with_scores:
-        # Skip irrelevant results — too different from query
         if score > 1.0:
             print(
                 f"Skipping irrelevant result (score: {score:.2f}): {doc.metadata.get('title', '')}"
             )
             continue
 
-        # Only count actual job documents toward "we have enough
-        # results" — anything without company metadata isn't a real
-        # job listing (e.g. general RAG chat knowledge sharing this
-        # same vector store), and was silently blocking the live
-        # Adzuna fallback for fields it had nothing real to offer.
         if not doc.metadata.get("company"):
             continue
 
-        # Check job is not expired
         fetched_at = doc.metadata.get("fetched_at", "")
         if fetched_at:
             try:
@@ -323,9 +452,10 @@ def hybrid_job_search(query, k=50, location="london", full_time=None, part_time=
 
     print(f"ChromaDB returned {len(fresh_results)} relevant fresh results")
 
-    # Step 2 — If less than 3 RELEVANT results — fetch live
+    # Step 2 — If less than 3 RELEVANT results — fetch live, from BOTH
+    # Adzuna and Reed, not just Adzuna. Wider net, more fields covered.
     if len(fresh_results) < 3:
-        print(f"Not enough relevant results — fetching live from Adzuna")
+        print(f"Not enough relevant results — fetching live from Adzuna + Reed")
 
         extraction_prompt = f"""Extract just the job role or field from this message.
 Return ONLY 1-3 words. Nothing else.
@@ -343,17 +473,20 @@ Job role:"""
         clean_query = llm.invoke(extraction_prompt).content.strip()
         print(f"Extracted search term: {clean_query}")
 
-        live_jobs = fetch_live_jobs(
+        adzuna_jobs = fetch_live_jobs(
             clean_query,
             location=location,
             full_time=full_time,
             part_time=part_time,
             category=category,
         )
+        reed_jobs = fetch_reed_jobs(clean_query, max_results=6, location=location)
+
+        live_jobs = adzuna_jobs + reed_jobs
 
         if live_jobs:
             vectorstore.add_documents(live_jobs)
-            print(f"Stored {len(live_jobs)} new jobs in ChromaDB")
+            print(f"Stored {len(live_jobs)} new jobs in ChromaDB ({len(adzuna_jobs)} Adzuna, {len(reed_jobs)} Reed)")
             fresh_results.extend(live_jobs)
 
     return fresh_results[:k]
@@ -1091,8 +1224,11 @@ def search_jobs(request: dict):
                 # Older cached docs won't have this — defaults to
                 # "onsite" rather than crashing or showing blank.
                 "work_mode": doc.metadata.get("work_mode", "onsite"),
+                "sponsor_verified_via": doc.metadata.get("sponsor_verified_via"),
             }
         )
+
+        
 
     # Remove duplicate companies — keep best match only
     seen = set()
@@ -1111,6 +1247,78 @@ def search_jobs(request: dict):
     print(f"Job search for '{query}' returned {len(unique_jobs)} unique results")
 
     return {"jobs": unique_jobs, "count": len(unique_jobs), "query": query}
+
+class RecheckRequest(BaseModel):
+    title: str
+    company: str
+    location: str = "london"
+
+
+@app.post("/jobs/recheck")
+def recheck_job(request: RecheckRequest):
+    # ─────────────────────────────────────────────
+    # LIVE RECHECK — upgrades the staleness warning from a guess
+    # (based on how long ago it was fetched) to real evidence
+    # (checked against Adzuna and Reed right now, this moment).
+    # ─────────────────────────────────────────────
+    title = request.title
+    company = request.company
+    location = request.location or "london"
+    company_low = company.lower()
+
+    found_adzuna = False
+    try:
+        app_id = os.getenv("ADZUNA_APP_ID")
+        api_key = os.getenv("ADZUNA_API_KEY")
+        url = "https://api.adzuna.com/v1/api/jobs/gb/search/1"
+        params = {
+            "app_id": app_id,
+            "app_key": api_key,
+            "results_per_page": 10,
+            "what": title,
+            "where": location,
+            "content-type": "application/json",
+        }
+        resp = http_requests.get(url, params=params)
+        if resp.status_code == 200:
+            for r in resp.json().get("results", []):
+                r_company = r.get("company", {}).get("display_name", "").lower()
+                if company_low in r_company or r_company in company_low:
+                    found_adzuna = True
+                    break
+    except Exception as e:
+        print(f"Recheck Adzuna error: {e}")
+
+    found_reed = False
+    try:
+        reed_key = os.getenv("REED_API_KEY")
+        if reed_key:
+            url = "https://www.reed.co.uk/api/1.0/search"
+            params = {"keywords": title, "locationName": location, "resultsToTake": 10}
+            resp = http_requests.get(url, params=params, auth=(reed_key, ""))
+            if resp.status_code == 200:
+                for r in resp.json().get("results", []):
+                    r_company = (r.get("employerName") or "").lower()
+                    if company_low in r_company or r_company in company_low:
+                        found_reed = True
+                        break
+    except Exception as e:
+        print(f"Recheck Reed error: {e}")
+
+    still_live = found_adzuna or found_reed
+    sources = [s for s, ok in [("Adzuna", found_adzuna), ("Reed", found_reed)] if ok]
+
+    if still_live:
+        message = f"Still listed on {' and '.join(sources)} as of right now."
+    else:
+        message = "No longer found on Adzuna or Reed — this role has likely been filled or removed."
+
+    return {
+        "still_live": still_live,
+        "found_adzuna": found_adzuna,
+        "found_reed": found_reed,
+        "message": message,
+    }
 
 
 @app.post("/skill-gap/analyse")
