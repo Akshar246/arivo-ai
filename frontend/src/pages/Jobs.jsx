@@ -588,8 +588,7 @@ export default function Jobs({ onNavigate }) {
           (a, b) => (b.visa_sponsor ? 1 : 0) - (a.visa_sponsor ? 1 : 0),
         )
       : filtered;
-  const active =
-    displayed.find((j) => jobKey(j) === selectedKey) || displayed[0] || null;
+  const active = displayed.find((j) => jobKey(j) === selectedKey) || null;
 
   return (
     <div className="aj-wrapper">
@@ -879,11 +878,13 @@ const styles = `
   .aj-list-col { height: auto; padding-right: 0; }
   
   /* Mobile Detail Takeover */
-  .aj-detail-col { 
-    position: fixed; inset: 0; z-index: 1000; background: var(--bg); border: none; border-radius: 0; 
+.aj-detail-col { 
+    position: fixed; inset: 0 0 76px 0; z-index: 90; background: var(--bg); border: none; border-radius: 0;
     height: 100vh; transform: translateX(100%); transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1); 
     display: none; 
   }
+    .aj-detail-back { display: flex !important; align-items: center; gap: 6px; margin: 16px; }
+    
   .aj-detail-col.is-open { transform: translateX(0); display: block; }
   .aj-detail-inner { padding: 24px 16px 80px; }
   
