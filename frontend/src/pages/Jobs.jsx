@@ -259,12 +259,7 @@ function ListCard({ job, active, saved, onSelect, onToggleSave }) {
           </span>
         )}
         {salary && salary !== "Salary not specified" && (
-          <span className="aj-badge aj-badge--salary">
-            {salary}
-            {job.salary_is_predicted && (
-              <span className="aj-salary-est"> est.</span>
-            )}
-          </span>
+          <span className="aj-badge aj-badge--salary">{salary}</span>
         )}
         {type && <span className="aj-badge aj-badge--type">{type}</span>}
         {job.work_mode && job.work_mode !== "onsite" && (
@@ -414,28 +409,11 @@ function Detail({ job, saved, onToggleSave, onClose, onScan, onNavigate }) {
         </div>
       </div>
 
-      <span className="aj-salary">
-        {job.salary}
-        {job.salary_is_predicted && (
-          <span
-            className="aj-salary-est"
-            title="Adzuna's estimate — not stated by the employer"
-          >
-            est.
-          </span>
-        )}
-      </span>
-
       <div className="aj-facts">
         {salary && salary !== "Salary not specified" && (
           <div className="aj-fact">
             <div className="aj-fact-lbl">Salary</div>
-            <div className="aj-fact-val">
-              {salary}
-              {job.salary_is_predicted && (
-                <span className="aj-salary-est"> est.</span>
-              )}
-            </div>
+            <div className="aj-fact-val">{salary}</div>
           </div>
         )}
         {type && (
@@ -587,7 +565,6 @@ export default function Jobs({ onNavigate }) {
 
   // ESLINT FIX: Pre-set loading and searched to true for the Auto-Feed
   const [loading, setLoading] = useState(true);
-  const [setSearched] = useState(true);
   const [error, setError] = useState(false);
   const [jobs, setJobs] = useState([]);
 
@@ -938,14 +915,6 @@ const styles = `
 .aj-badge--mode { background: rgba(245, 196, 81, 0.1); color: var(--gold); border: 1px solid rgba(245, 196, 81, 0.2); }
 .aj-lc-posted-row { font-size: 11.5px; color: var(--tx3); display: flex; align-items: center; gap: 6px; }
 
-.aj-salary-est {
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--tx3, var(--tx2));
-  margin-left: 5px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
 
 /* Detail Column */
 .aj-detail-col { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; height: calc(100vh - 280px); overflow-y: auto; position: sticky; top: 140px; scrollbar-width: none; }
