@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 
 // ─────────────────────────────────────────────────────────────
@@ -56,17 +56,6 @@ const workModeLabel = (m) => {
   if (m === "remote") return "Remote";
   if (m === "hybrid") return "Hybrid";
   return "On-site";
-};
-
-const stalenessMessage = (fetchedAt) => {
-  if (!fetchedAt) return null;
-  const then = new Date(fetchedAt);
-  if (isNaN(then)) return null;
-  const days = Math.floor((Date.now() - then.getTime()) / 86400000);
-  if (days < 14) return null;
-  if (days < 30)
-    return `Listing data is ${days} days old — verify it's still open.`;
-  return `Listing data is over a month old — may be filled.`;
 };
 
 const cleanSalary = (s) => {
@@ -270,7 +259,12 @@ function ListCard({ job, active, saved, onSelect, onToggleSave }) {
           </span>
         )}
         {salary && salary !== "Salary not specified" && (
-          <span className="aj-badge aj-badge--salary">{salary}</span>
+          <span className="aj-badge aj-badge--salary">
+            {salary}
+            {job.salary_is_predicted && (
+              <span className="aj-salary-est"> est.</span>
+            )}
+          </span>
         )}
         {type && <span className="aj-badge aj-badge--type">{type}</span>}
         {job.work_mode && job.work_mode !== "onsite" && (
@@ -292,6 +286,34 @@ function ListCard({ job, active, saved, onSelect, onToggleSave }) {
 
 // ── Detail panel (the in-app description view) ────────────────
 function Detail({ job, saved, onToggleSave, onClose, onScan, onNavigate }) {
+  const [companyRoles, setCompanyRoles] = useState(null);
+  const [companyRolesLoading, setCompanyRolesLoading] = useState(false);
+
+  const jobIdentity = `${job?.title}-${job?.company}`;
+  const [prevJobIdentity, setPrevJobIdentity] = useState(jobIdentity);
+  if (jobIdentity !== prevJobIdentity) {
+    setPrevJobIdentity(jobIdentity);
+    setCompanyRoles(null);
+  }
+
+  const loadCompanyRoles = async () => {
+    setCompanyRolesLoading(true);
+    try {
+      const res = await axios.post(
+        `${import.meta.env.VITE_AI_URL}/jobs/company-roles`,
+        {
+          company: job.company,
+          exclude_title: job.title,
+          location: "london",
+        },
+      );
+      setCompanyRoles(res.data.roles || []);
+    } catch {
+      setCompanyRoles([]);
+    }
+    setCompanyRolesLoading(false);
+  };
+
   const [recheckLoading, setRecheckLoading] = useState(false);
   const [recheckResult, setRecheckResult] = useState(null);
 
@@ -392,11 +414,28 @@ function Detail({ job, saved, onToggleSave, onClose, onScan, onNavigate }) {
         </div>
       </div>
 
+      <span className="aj-salary">
+        {job.salary}
+        {job.salary_is_predicted && (
+          <span
+            className="aj-salary-est"
+            title="Adzuna's estimate — not stated by the employer"
+          >
+            est.
+          </span>
+        )}
+      </span>
+
       <div className="aj-facts">
         {salary && salary !== "Salary not specified" && (
           <div className="aj-fact">
             <div className="aj-fact-lbl">Salary</div>
-            <div className="aj-fact-val">{salary}</div>
+            <div className="aj-fact-val">
+              {salary}
+              {job.salary_is_predicted && (
+                <span className="aj-salary-est"> est.</span>
+              )}
+            </div>
           </div>
         )}
         {type && (
@@ -480,6 +519,42 @@ function Detail({ job, saved, onToggleSave, onClose, onScan, onNavigate }) {
         </div>
       )}
 
+      <div className="aj-company-roles">
+        {!companyRoles && (
+          <button
+            className="aj-company-roles-btn"
+            onClick={loadCompanyRoles}
+            disabled={companyRolesLoading}
+          >
+            {companyRolesLoading
+              ? "Checking…"
+              : `🔎 See other roles at ${job.company}`}
+          </button>
+        )}
+        {companyRoles && companyRoles.length > 0 && (
+          <div className="aj-company-roles-list">
+            <div className="aj-section-h">Other roles at {job.company}</div>
+            {companyRoles.map((r, i) => (
+              <a
+                key={i}
+                href={r.url}
+                target="_blank"
+                rel="noreferrer"
+                className="aj-company-role-item"
+              >
+                <span>{r.title}</span>
+                <span className="aj-company-role-loc">{r.location}</span>
+              </a>
+            ))}
+          </div>
+        )}
+        {companyRoles && companyRoles.length === 0 && (
+          <div className="aj-company-roles-empty">
+            No other open roles found right now at {job.company}.
+          </div>
+        )}
+      </div>
+
       <div className="aj-section-h">Role Description</div>
       {hasDesc ? (
         <div className="aj-desc-body">
@@ -506,12 +581,13 @@ export default function Jobs({ onNavigate }) {
     return context.targetRole || "Software Engineer";
   });
   const [location, setLocation] = useState("London");
-  const [category, setCategory] = useState("");
+  const [category] = useState("");
+  // eslint-disable-next-line no-unused-vars
   const [categories, setCategories] = useState([]);
 
   // ESLINT FIX: Pre-set loading and searched to true for the Auto-Feed
   const [loading, setLoading] = useState(true);
-  const [searched, setSearched] = useState(true);
+  const [setSearched] = useState(true);
   const [error, setError] = useState(false);
   const [jobs, setJobs] = useState([]);
 
@@ -577,7 +653,6 @@ export default function Jobs({ onNavigate }) {
     setQuery(q);
     setLocation(loc);
     setLoading(true);
-    setSearched(true);
     setError(false);
     setSelectedKey(null);
 
@@ -830,6 +905,16 @@ const styles = `
 .aj-visa-toggle:hover { background: rgba(0, 212, 170, 0.1); }
 .aj-visa-toggle.is-on { background: var(--teal); color: #000; }
 
+
+.aj-company-roles { margin-bottom: 32px; }
+.aj-company-roles-btn { display: inline-flex; align-items: center; gap: 8px; background: transparent; border: 1px solid var(--border); color: var(--tx2); padding: 10px 18px; border-radius: 12px; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+.aj-company-roles-btn:hover { border-color: var(--teal); color: var(--teal); }
+.aj-company-roles-list { display: flex; flex-direction: column; gap: 8px; }
+.aj-company-role-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; background: rgba(255,255,255,0.02); border: 1px solid var(--border); border-radius: 10px; text-decoration: none; color: var(--tx); font-size: 13.5px; font-weight: 600; transition: all 0.2s; }
+.aj-company-role-item:hover { border-color: var(--teal); background: rgba(0,212,170,0.05); }
+.aj-company-role-loc { font-size: 12px; color: var(--tx3, var(--tx2)); font-weight: 500; }
+.aj-company-roles-empty { font-size: 13px; color: var(--tx3, var(--tx2)); }
+
 /* Split View Architecture */
 .aj-split-view { display: grid; grid-template-columns: 420px 1fr; gap: 24px; align-items: start; }
 .aj-list-col { display: flex; flex-direction: column; gap: 12px; height: calc(100vh - 280px); overflow-y: auto; padding-right: 8px; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
@@ -852,6 +937,15 @@ const styles = `
 .aj-badge--type { background: rgba(255, 255, 255, 0.05); color: var(--tx2); border: 1px solid var(--border); }
 .aj-badge--mode { background: rgba(245, 196, 81, 0.1); color: var(--gold); border: 1px solid rgba(245, 196, 81, 0.2); }
 .aj-lc-posted-row { font-size: 11.5px; color: var(--tx3); display: flex; align-items: center; gap: 6px; }
+
+.aj-salary-est {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--tx3, var(--tx2));
+  margin-left: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 
 /* Detail Column */
 .aj-detail-col { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; height: calc(100vh - 280px); overflow-y: auto; position: sticky; top: 140px; scrollbar-width: none; }
