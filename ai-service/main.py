@@ -255,6 +255,7 @@ def fetch_live_jobs(query, max_results=10, location="london", full_time=None, pa
             job_location = job.get("location", {}).get("display_name", location or "London")
             salary_min = job.get("salary_min", 0)
             salary_max = job.get("salary_max", 0)
+            salary_is_predicted = bool(job.get("salary_is_predicted", 0))
             raw_desc = job.get("description", "") or ""
             raw_desc = raw_desc.strip()
             if raw_desc.lower().startswith("description"):
@@ -302,6 +303,7 @@ def fetch_live_jobs(query, max_results=10, location="london", full_time=None, pa
                     "title": title,
                     "location": job_location,
                     "salary": salary,
+                    "salary_is_predicted": salary_is_predicted,
                     "visa_sponsor": visa_sponsor,
                     "sponsor_verified_via": sponsor_verified_via,
                     "url": job_url,
@@ -387,6 +389,7 @@ def fetch_reed_jobs(query, max_results=6, location="london"):
                     "title": title,
                     "location": job_location,
                     "salary": salary,
+                    "salary_is_predicted": False,
                     "visa_sponsor": visa_sponsor,
                     "sponsor_verified_via": "adzuna" if visa_sponsor else None,
                     "url": job_url,
@@ -1213,6 +1216,7 @@ def search_jobs(request: dict):
                 "title": doc.metadata.get("title", "Unknown"),
                 "location": doc.metadata.get("location", "London"),
                 "salary": doc.metadata.get("salary", "Not specified"),
+                "salary_is_predicted": doc.metadata.get("salary_is_predicted", False),
                 "visa_sponsor": doc.metadata.get("visa_sponsor", False),
                 "url": doc.metadata.get("url", ""),
                 "source": doc.metadata.get("source", "adzuna"),
@@ -1319,6 +1323,80 @@ def recheck_job(request: RecheckRequest):
         "found_reed": found_reed,
         "message": message,
     }
+
+class CompanyRolesRequest(BaseModel):
+    company: str
+    exclude_title: str = ""
+    location: str = "london"
+
+
+@app.post("/jobs/company-roles")
+def company_roles(request: CompanyRolesRequest):
+    # ─────────────────────────────────────────────
+    # OTHER ROLES AT THIS COMPANY — live, right now.
+    # Powers a quick discovery section on a job's detail panel,
+    # pulled from both Adzuna and Reed so one company's listings
+    # aren't missed just because they only posted on one board.
+    # ─────────────────────────────────────────────
+    company = request.company
+    exclude_title = (request.exclude_title or "").lower()
+    location = request.location or "london"
+    company_low = company.lower()
+    roles = []
+    seen_titles = set()
+
+    try:
+        app_id = os.getenv("ADZUNA_APP_ID")
+        api_key = os.getenv("ADZUNA_API_KEY")
+        url = "https://api.adzuna.com/v1/api/jobs/gb/search/1"
+        params = {
+            "app_id": app_id,
+            "app_key": api_key,
+            "results_per_page": 10,
+            "what": company,
+            "where": location,
+            "content-type": "application/json",
+        }
+        resp = http_requests.get(url, params=params)
+        if resp.status_code == 200:
+            for r in resp.json().get("results", []):
+                r_company = r.get("company", {}).get("display_name", "")
+                r_title = r.get("title", "")
+                if company_low in r_company.lower() or r_company.lower() in company_low:
+                    if r_title.lower() != exclude_title and r_title.lower() not in seen_titles:
+                        seen_titles.add(r_title.lower())
+                        roles.append({
+                            "title": r_title,
+                            "location": r.get("location", {}).get("display_name", location),
+                            "url": r.get("redirect_url", ""),
+                            "source": "adzuna",
+                        })
+    except Exception as e:
+        print(f"Company roles Adzuna error: {e}")
+
+    try:
+        reed_key = os.getenv("REED_API_KEY")
+        if reed_key:
+            url = "https://www.reed.co.uk/api/1.0/search"
+            params = {"keywords": company, "locationName": location, "resultsToTake": 10}
+            resp = http_requests.get(url, params=params, auth=(reed_key, ""))
+            if resp.status_code == 200:
+                for r in resp.json().get("results", []):
+                    r_company = r.get("employerName", "")
+                    r_title = r.get("jobTitle", "")
+                    if company_low in r_company.lower() or r_company.lower() in company_low:
+                        if r_title.lower() != exclude_title and r_title.lower() not in seen_titles:
+                            seen_titles.add(r_title.lower())
+                            roles.append({
+                                "title": r_title,
+                                "location": r.get("locationName", location),
+                                "url": r.get("jobUrl", ""),
+                                "source": "reed",
+                            })
+    except Exception as e:
+        print(f"Company roles Reed error: {e}")
+
+    return {"roles": roles[:5], "count": len(roles[:5])}
 
 
 @app.post("/skill-gap/analyse")
