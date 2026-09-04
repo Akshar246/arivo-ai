@@ -39,11 +39,13 @@ app = FastAPI(title="Arivo AI Service", version="1.0.0")
 # ─────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://frontend:80",
-    ],
+allow_origins=[
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://frontend:80",
+    "https://arivo-ai.vercel.app",
+    "https://*.vercel.app",
+],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -55,7 +57,7 @@ app.add_middleware(
 # temperature=0.4 means fairly factual responses
 # not too creative, not too robotic
 # ─────────────────────────────────────────────
-llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0.4)
+llm = ChatGroq(model="openai/gpt-oss-120b", temperature=0.4)
 
 # ─────────────────────────────────────────────
 # RAG SETUP
@@ -156,6 +158,9 @@ def is_sponsor(company_name, sponsors_set):
         return False
 
     company_lower = company_name.strip().lower()
+
+    if not company_lower:
+        return False
 
     # Direct match first — fastest
     if company_lower in sponsors_set:
@@ -1397,6 +1402,7 @@ def company_roles(request: CompanyRolesRequest):
         print(f"Company roles Reed error: {e}")
 
     return {"roles": roles[:5], "count": len(roles[:5])}
+
 
 
 @app.post("/skill-gap/analyse")
