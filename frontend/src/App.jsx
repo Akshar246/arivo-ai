@@ -282,7 +282,7 @@ function AppRouter() {
       case "chat":
         return <Chat />;
       case "profile":
-        return <Profile />;
+        return <Profile onNavigate={setPage} />;
       case "ats":
         return <ATS onNavigate={setPage} />;
       default:
