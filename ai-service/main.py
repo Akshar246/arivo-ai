@@ -438,11 +438,17 @@ def fetch_reed_jobs(query, max_results=6, location="london"):
 # ─────────────────────────────────────────────
 
 def hybrid_job_search(query, k=5, location="london", full_time=None, part_time=None, category=None):
+    # ─────────────────────────────────────────────
+    # HYBRID SEARCH: Combine ChromaDB + Live APIs
+    # 1. Search cached jobs (ChromaDB) — fast
+    # 2. Fetch live jobs (Adzuna + Reed) — fresh
+    # 3. Merge all sources — best coverage
+    # ─────────────────────────────────────────────
 
     # Step 1 — Search ChromaDB with SCORES
-    results_with_scores = vectorstore.similarity_search_with_score(query, k=k)
+    results_with_scores = vectorstore.similarity_search_with_score(query, k=10)
 
-    fresh_results = []
+    chroma_results = []
     cutoff_date = datetime.now() - timedelta(days=30)
 
     for doc, score in results_with_scores:
@@ -460,20 +466,19 @@ def hybrid_job_search(query, k=5, location="london", full_time=None, part_time=N
             try:
                 job_date = datetime.strptime(fetched_at, "%Y-%m-%d")
                 if job_date > cutoff_date:
-                    fresh_results.append(doc)
+                    chroma_results.append(doc)
             except:
-                fresh_results.append(doc)
+                chroma_results.append(doc)
         else:
-            fresh_results.append(doc)
+            chroma_results.append(doc)
 
-    print(f"ChromaDB returned {len(fresh_results)} relevant fresh results")
+    print(f"ChromaDB returned {len(chroma_results)} relevant fresh results")
 
-    # Step 2 — If less than 3 RELEVANT results — fetch live, from BOTH
-    # Adzuna and Reed, not just Adzuna. Wider net, more fields covered.
-    if len(fresh_results) < 3:
-        print(f"Not enough relevant results — fetching live from Adzuna + Reed")
+    # Step 2 — ALWAYS fetch live from Adzuna + Reed (regardless of ChromaDB results)
+    # This ensures users get fresh, current jobs even if ChromaDB is limited
+    print(f"Fetching live from Adzuna + Reed...")
 
-        extraction_prompt = f"""Extract just the job role or field from this message.
+    extraction_prompt = f"""Extract just the job role or field from this message.
 Return ONLY 1-3 words. Nothing else.
 
 Examples:
@@ -486,26 +491,45 @@ Examples:
 Message: {query}
 Job role:"""
 
+    try:
         clean_query = llm.invoke(extraction_prompt).content.strip()
         print(f"Extracted search term: {clean_query}")
+    except:
+        clean_query = query
+        print(f"Could not extract query, using original: {clean_query}")
 
-        adzuna_jobs = fetch_live_jobs(
-            clean_query,
-            location=location,
-            full_time=full_time,
-            part_time=part_time,
-            category=category,
-        )
-        reed_jobs = fetch_reed_jobs(clean_query, max_results=6, location=location)
+    # Fetch from both APIs
+    adzuna_jobs = fetch_live_jobs(
+        clean_query,
+        location=location,
+        full_time=full_time,
+        part_time=part_time,
+        category=category,
+    )
+    reed_jobs = fetch_reed_jobs(clean_query, max_results=6, location=location)
 
-        live_jobs = adzuna_jobs + reed_jobs
+    live_jobs = adzuna_jobs + reed_jobs
+    print(f"Fetched {len(adzuna_jobs)} Adzuna + {len(reed_jobs)} Reed = {len(live_jobs)} live jobs")
 
-        if live_jobs:
-            vectorstore.add_documents(live_jobs)
-            print(f"Stored {len(live_jobs)} new jobs in ChromaDB ({len(adzuna_jobs)} Adzuna, {len(reed_jobs)} Reed)")
-            fresh_results.extend(live_jobs)
+    # Step 3 — Combine ChromaDB + Live results
+    all_results = chroma_results + live_jobs
 
-    return fresh_results[:k]
+    # Step 4 — Deduplicate by company + title
+    seen = {}
+    unique_results = []
+    for job in all_results:
+        key = f"{job.metadata.get('company', '').lower()}-{job.metadata.get('title', '').lower()}"
+        if key not in seen:
+            seen[key] = True
+            unique_results.append(job)
+
+    print(f"Merged ChromaDB + Live: {len(chroma_results)} + {len(live_jobs)} → {len(unique_results)} unique jobs")
+
+    # Step 5 — Store new live jobs for future searches
+    if live_jobs:
+        vectorstore.add_documents(live_jobs)
+
+    return unique_results[:k]
 
 
 # ─────────────────────────────────────────────
@@ -1301,7 +1325,7 @@ def search_jobs(request: dict):
     # Run hybrid search with the query and filters
     docs = hybrid_job_search(
         query,
-        k=10,
+        k=25,
         location=location,
         full_time=full_time,
         part_time=part_time,
