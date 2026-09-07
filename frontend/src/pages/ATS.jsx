@@ -142,7 +142,7 @@ export default function ATS({ onNavigate }) {
       if (pending.isJson && pending.data) {
         const d = pending.data;
         if (d.isPartial) {
-          return `${d.title} at ${d.company}\n\n${d.description}\n\n[ PASTE THE REST OF THE FULL JOB DESCRIPTION HERE ]`;
+          return `${d.title} at ${d.company}\n\n${d.description}`;
         }
         return d.description || "";
       }

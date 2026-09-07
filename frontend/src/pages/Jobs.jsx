@@ -665,18 +665,44 @@ export default function Jobs({ onNavigate }) {
     writeLS(SAVED_KEY, next);
   };
 
-  const handleScanMatch = (job) => {
+  const handleScanMatch = async (job) => {
+    let fullDescription = job.description_full || job.description;
+    let isPartial = false;
+
+    // Try to scrape full description from job URL
+    if (job.url) {
+      try {
+        const res = await axios.post(
+          `${import.meta.env.VITE_AI_URL}/jobs/scrape-description`,
+          {
+            url: job.url,
+            source: job.source || "reed",
+          },
+          { timeout: 5000 }
+        );
+        if (res.data.success && res.data.description) {
+          fullDescription = res.data.description;
+        } else {
+          // Scraper failed, fallback to API description
+          isPartial = true;
+        }
+      } catch (err) {
+        // Network error, fallback to API description
+        console.warn("Scraper error:", err);
+        isPartial = true;
+      }
+    }
+
     const payload = {
       title: job.title,
       company: job.company,
-      description: job.description,
-      isPartial: true,
+      description: fullDescription,
+      isPartial: isPartial,
     };
     sessionStorage.setItem("arivo_pending_scan", JSON.stringify(payload));
     if (job.url) window.open(job.url, "_blank");
     if (onNavigate) onNavigate("ats");
   };
-
   const baseList = viewTab === "saved" ? savedJobs : jobs;
   const filtered = visaOnly ? baseList.filter((j) => j.visa_sponsor) : baseList;
 

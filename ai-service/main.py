@@ -24,6 +24,7 @@ import requests as http_requests
 import csv
 import io
 import re
+from bs4 import BeautifulSoup
 
 # Load all environment variables from .env file
 load_dotenv()
@@ -268,6 +269,7 @@ def fetch_live_jobs(query, max_results=10, location="london", full_time=None, pa
             description = raw_desc[:300]
             if len(raw_desc) > 300:
                 description = description.rsplit(" ", 1)[0].rstrip(".,;: ") + "…"
+            description_full = raw_desc
             job_url = job.get("redirect_url", "")
 
             created = job.get("created", "")
@@ -315,6 +317,7 @@ def fetch_live_jobs(query, max_results=10, location="london", full_time=None, pa
                     "source": "adzuna_live",
                     "fetched_at": datetime.now().strftime("%Y-%m-%d"),
                     "description": description,
+                    "description_full": description_full,
                     "created": created,
                     "contract_time": contract_time,
                     "contract_type": contract_type,
@@ -366,7 +369,11 @@ def fetch_reed_jobs(query, max_results=6, location="london"):
             job_location = job.get("locationName", location or "London")
             salary_min = job.get("minimumSalary")
             salary_max = job.get("maximumSalary")
-            description = (job.get("jobDescription") or "")[:300]
+            raw_desc_reed = job.get("jobDescription") or ""
+            description = raw_desc_reed[:300]
+            if len(raw_desc_reed) > 300:
+                description = description.rsplit(" ", 1)[0].rstrip(".,;: ") + "…"
+            description_full = raw_desc_reed  # Store complete text
             job_url = job.get("jobUrl", "")
             created = job.get("date", "")
 
@@ -401,6 +408,7 @@ def fetch_reed_jobs(query, max_results=6, location="london"):
                     "source": "reed_live",
                     "fetched_at": datetime.now().strftime("%Y-%m-%d"),
                     "description": description,
+                    "description_full": description_full,
                     "created": created,
                     "contract_time": "",
                     "contract_type": "",
@@ -1181,6 +1189,94 @@ def get_job_categories():
         return {"categories": []}
 
 
+# ─────────────────────────────────────────────
+# WEB SCRAPER FOR FULL JOB DESCRIPTIONS
+# Fetches complete descriptions from Reed/Adzuna
+# when the free API returns truncated text
+# ─────────────────────────────────────────────
+def scrape_reed_description(url):
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+        response = http_requests.get(url, headers=headers, timeout=5)
+        if response.status_code != 200:
+            return None
+
+        soup = BeautifulSoup(response.content, 'html.parser')
+
+        # Reed stores full description in this div
+        desc_div = soup.find('div', {'data-testid': 'jobDescription'})
+        if not desc_div:
+            desc_div = soup.find('div', class_='job-description')
+        if not desc_div:
+            desc_div = soup.find('div', {'class': lambda x: x and 'description' in x.lower()})
+
+        if desc_div:
+            text = desc_div.get_text(separator=' ', strip=True)
+            return text.strip() if text else None
+
+        return None
+    except Exception as e:
+        print(f"Reed scraper error: {e}")
+        return None
+
+def scrape_adzuna_description(url):
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+        }
+        response = http_requests.get(url, headers=headers, timeout=5)
+        if response.status_code != 200:
+            return None
+
+        soup = BeautifulSoup(response.content, 'html.parser')
+
+        # Adzuna stores full description in this div
+        desc_div = soup.find('div', class_='job-full-description')
+        if not desc_div:
+            desc_div = soup.find('div', {'data-adzuna-id': 'job-description'})
+        if not desc_div:
+            desc_div = soup.find('div', {'class': lambda x: x and 'description' in x.lower()})
+
+        if desc_div:
+            text = desc_div.get_text(separator=' ', strip=True)
+            return text.strip() if text else None
+
+        return None
+    except Exception as e:
+        print(f"Adzuna scraper error: {e}")
+        return None
+
+# ─────────────────────────────────────────────
+# SCRAPE DESCRIPTION ENDPOINT
+# Frontend calls this when user clicks "Scan CV"
+# Returns full job description or empty string if fails
+# ─────────────────────────────────────────────
+class ScrapeRequest(BaseModel):
+    url: str
+    source: str  # "reed" or "adzuna"
+
+@app.post("/jobs/scrape-description")
+def scrape_description(request: ScrapeRequest):
+    url = request.url
+    source = request.source.lower()
+
+    if not url:
+        return {"description": "", "success": False}
+
+    full_desc = None
+
+    if "reed" in source:
+        full_desc = scrape_reed_description(url)
+    elif "adzuna" in source:
+        full_desc = scrape_adzuna_description(url)
+
+    if full_desc:
+        return {"description": full_desc, "success": True}
+    else:
+        return {"description": "", "success": False}
+
 @app.post("/jobs/search")
 def search_jobs(request: dict):
     # ─────────────────────────────────────────────
@@ -1227,6 +1323,7 @@ def search_jobs(request: dict):
                 "source": doc.metadata.get("source", "adzuna"),
                 "fetched_at": doc.metadata.get("fetched_at", ""),
                 "description": doc.metadata.get("description", ""),
+"description_full": doc.metadata.get("description_full", ""),
                 "created": doc.metadata.get("created", ""),
                 "contract_time": doc.metadata.get("contract_time", ""),
                 "contract_type": doc.metadata.get("contract_type", ""),
