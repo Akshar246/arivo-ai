@@ -40,13 +40,13 @@ app = FastAPI(title="Arivo AI Service", version="1.0.0")
 # ─────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-allow_origins=[
-    "http://localhost:5173",
-    "http://localhost:3000",
-    "http://frontend:80",
-    "https://arivo-ai.vercel.app",
-    "https://*.vercel.app",
-],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://frontend:80",
+        "https://arivo-ai.vercel.app",
+        "https://*.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -134,7 +134,9 @@ def load_sponsors_quick():
         # probably changed too. Don't let a broken parse silently
         # replace a good cache with an almost-empty one.
         if len(sponsors) < 10000:
-            print(f"Suspiciously low sponsor count ({len(sponsors)}) — keeping previous cache")
+            print(
+                f"Suspiciously low sponsor count ({len(sponsors)}) — keeping previous cache"
+            )
             return sponsors_cache or set()
 
         sponsors_cache = sponsors
@@ -223,7 +225,14 @@ def rescue_sponsor_via_reed(title, company, location="london"):
         return None
 
 
-def fetch_live_jobs(query, max_results=10, location="london", full_time=None, part_time=None, category=None):
+def fetch_live_jobs(
+    query,
+    max_results=10,
+    location="london",
+    full_time=None,
+    part_time=None,
+    category=None,
+):
     try:
         app_id = os.getenv("ADZUNA_APP_ID")
         api_key = os.getenv("ADZUNA_API_KEY")
@@ -258,14 +267,16 @@ def fetch_live_jobs(query, max_results=10, location="london", full_time=None, pa
         for job in jobs:
             company = job.get("company", {}).get("display_name", "Unknown")
             title = job.get("title", "Unknown")
-            job_location = job.get("location", {}).get("display_name", location or "London")
+            job_location = job.get("location", {}).get(
+                "display_name", location or "London"
+            )
             salary_min = job.get("salary_min", 0)
             salary_max = job.get("salary_max", 0)
             salary_is_predicted = bool(job.get("salary_is_predicted", 0))
             raw_desc = job.get("description", "") or ""
             raw_desc = raw_desc.strip()
             if raw_desc.lower().startswith("description"):
-                raw_desc = raw_desc[len("description"):].lstrip(" :–-")
+                raw_desc = raw_desc[len("description") :].lstrip(" :–-")
             description = raw_desc[:300]
             if len(raw_desc) > 300:
                 description = description.rsplit(" ", 1)[0].rstrip(".,;: ") + "…"
@@ -326,13 +337,16 @@ def fetch_live_jobs(query, max_results=10, location="london", full_time=None, pa
             )
             documents.append(doc)
 
-        print(f"Fetched {len(documents)} live jobs from Adzuna for: {query} (location={location})")
+        print(
+            f"Fetched {len(documents)} live jobs from Adzuna for: {query} (location={location})"
+        )
         return documents
 
     except Exception as e:
         print(f"Live fetch error: {e}")
         return []
-    
+
+
 def fetch_reed_jobs(query, max_results=6, location="london"):
     # ─────────────────────────────────────────────
     # SECOND LIVE SOURCE FOR SEARCH RESULTS — not just sponsor
@@ -437,7 +451,10 @@ def fetch_reed_jobs(query, max_results=6, location="london"):
 # Step 5 — Return the best results
 # ─────────────────────────────────────────────
 
-def hybrid_job_search(query, k=5, location="london", full_time=None, part_time=None, category=None):
+
+def hybrid_job_search(
+    query, k=5, location="london", full_time=None, part_time=None, category=None
+):
     # ─────────────────────────────────────────────
     # HYBRID SEARCH: Combine ChromaDB + Live APIs
     # 1. Search cached jobs (ChromaDB) — fast
@@ -509,7 +526,9 @@ Job role:"""
     reed_jobs = fetch_reed_jobs(clean_query, max_results=6, location=location)
 
     live_jobs = adzuna_jobs + reed_jobs
-    print(f"Fetched {len(adzuna_jobs)} Adzuna + {len(reed_jobs)} Reed = {len(live_jobs)} live jobs")
+    print(
+        f"Fetched {len(adzuna_jobs)} Adzuna + {len(reed_jobs)} Reed = {len(live_jobs)} live jobs"
+    )
 
     # Step 3 — Combine ChromaDB + Live results
     all_results = chroma_results + live_jobs
@@ -523,7 +542,9 @@ Job role:"""
             seen[key] = True
             unique_results.append(job)
 
-    print(f"Merged ChromaDB + Live: {len(chroma_results)} + {len(live_jobs)} → {len(unique_results)} unique jobs")
+    print(
+        f"Merged ChromaDB + Live: {len(chroma_results)} + {len(live_jobs)} → {len(unique_results)} unique jobs"
+    )
 
     # Step 5 — Store new live jobs for future searches
     if live_jobs:
@@ -541,7 +562,7 @@ Job role:"""
 class ChatRequest(BaseModel):
     message: str
     session_id: str = "default"  # default session if not provided
-    mode: str = "general" 
+    mode: str = "general"
 
 
 class SkillGapRequest(BaseModel):
@@ -581,26 +602,22 @@ def chat(request: ChatRequest):
     system_prompts = {
         "general": """You are Arivo, an elite AI career coach for international students in the UK. 
 Use the provided job listings to answer. Do not make up jobs. Be direct, confident, and highly strategic.""",
-        
         "localizer": """You are a top-tier UK tech recruiter and 'Prestige Translator'. 
 The user is providing their home-country experience. 
 Your job: 
 1. Translate the prestige of their foreign companies to UK equivalents (e.g., if they say HDFC Bank, say "That is India's largest private bank, equivalent to Barclays UK"). 
 2. Rewrite their bullet points to be quantifiable, highly confident, and culturally aligned with London's corporate scene. Remove all passive/deferential language.""",
-        
         "visa": """You are a ruthless but highly strategic UK Immigration Advisor. 
 Look at the SYSTEM ALERTS in the context below regarding the company's sponsor status. 
 If they ARE a sponsor: Give the user a confident, non-desperate script on exactly when and how to ask for the Skilled Worker Visa (e.g., wait until the end of the HR screen). 
 If they ARE NOT a sponsor: Tell them bluntly NOT to waste their time interviewing. Do not give generic advice. Give tactical, script-based advice.""",
-        
         "interview": """You are a strict hiring manager at a top UK company. The user wants to practice an interview. 
 Ask them ONE tough technical or behavioral question based on their message. Wait for them to answer. 
 Grade their answer out of 10 based on the STAR method, give a quick blunt critique, and ask the next question.""",
-        
         "tone": """You are an expert in UK Corporate Culture and Communications. 
 The user will provide an email, cover letter, or interview answer. 
 Analyze it for: 1) Overly deferential/subservient language ("Respected Sir", "Kindly", "Do the needful"). 2) Passive voice. 3) Lack of directness. 
-Rewrite the text to be polite, confident, and direct—the standard for the UK market. Explain exactly what you changed and why."""
+Rewrite the text to be polite, confident, and direct—the standard for the UK market. Explain exactly what you changed and why.""",
     }
 
     selected_prompt = system_prompts.get(request.mode, system_prompts["general"])
@@ -612,49 +629,57 @@ Rewrite the text to be polite, confident, and direct—the standard for the UK m
 Return ONLY a valid JSON list of strings. If no companies are mentioned, return an empty list [].
 Do not include any other text.
 Message: {request.message}"""
-        
+
         try:
             raw_companies = llm.invoke(extract_prompt).content.strip()
             if raw_companies.startswith("```"):
                 raw_companies = raw_companies.split("```")[1]
                 if raw_companies.startswith("json"):
                     raw_companies = raw_companies[4:]
-            
+
             companies = json.loads(raw_companies)
-            
+
             if companies and len(companies) > 0:
                 sponsors = load_sponsors_quick()
                 alerts = []
                 for comp in companies:
                     is_sponsored = is_sponsor(comp, sponsors)
                     if is_sponsored:
-                        alerts.append(f"- '{comp}' IS AN ACTIVE A-RATED SPONSOR. Tell the user this is confirmed.")
+                        alerts.append(
+                            f"- '{comp}' IS AN ACTIVE A-RATED SPONSOR. Tell the user this is confirmed."
+                        )
                     else:
-                        alerts.append(f"- '{comp}' IS NOT ON THE SPONSOR REGISTER. Warn the user heavily.")
-                
-                context_data = "\n\nSYSTEM ALERTS FROM HOME OFFICE DB:\n" + "\n".join(alerts)
+                        alerts.append(
+                            f"- '{comp}' IS NOT ON THE SPONSOR REGISTER. Warn the user heavily."
+                        )
+
+                context_data = "\n\nSYSTEM ALERTS FROM HOME OFFICE DB:\n" + "\n".join(
+                    alerts
+                )
         except Exception as e:
             print(f"Visa extraction error: {e}")
-            pass # Fallback to standard prompt if extraction fails
+            pass  # Fallback to standard prompt if extraction fails
 
     # Standard job fallback for general mode
     elif request.mode == "general":
         relevant_docs = hybrid_job_search(request.message, k=5)
-        context_data = "\n\nReal UK Job Listings Context:\n" + "\n".join([doc.page_content for doc in relevant_docs])
+        context_data = "\n\nReal UK Job Listings Context:\n" + "\n".join(
+            [doc.page_content for doc in relevant_docs]
+        )
 
     final_system_prompt = selected_prompt + context_data
 
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", final_system_prompt),
-        MessagesPlaceholder(variable_name="history"),
-        ("human", "{input}"),
-    ])
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", final_system_prompt),
+            MessagesPlaceholder(variable_name="history"),
+            ("human", "{input}"),
+        ]
+    )
 
     chain = prompt | llm | StrOutputParser()
 
-    response = chain.invoke(
-        {"history": history, "input": request.message}
-    )
+    response = chain.invoke({"history": history, "input": request.message})
 
     # Save this exchange to memory
     history.append(HumanMessage(content=request.message))
@@ -811,9 +836,17 @@ def check_parseability(cv):
     if chars > 600:
         return 20, "pass", "Your CV is text-based and fully readable by ATS."
     elif chars > 200:
-        return 13, "warn", "Readable, but quite short. Make sure all content is selectable text, not images."
+        return (
+            13,
+            "warn",
+            "Readable, but quite short. Make sure all content is selectable text, not images.",
+        )
     else:
-        return 4, "fail", "Very little readable text found. If your CV is a scanned image, ATS cannot read it — export it as a text-based PDF."
+        return (
+            4,
+            "fail",
+            "Very little readable text found. If your CV is a scanned image, ATS cannot read it — export it as a text-based PDF.",
+        )
 
 
 # ── CHECK 2: Standard sections ───────────────
@@ -836,7 +869,11 @@ def check_sections(cv):
     score = round((len(found) / len(wanted)) * 15)
     if not missing:
         return score, "pass", "All key sections found: Experience, Education, Skills."
-    return score, "warn", f"Missing clearly-labelled section(s): {', '.join(missing)}. Add plain headers so ATS can sort your info."
+    return (
+        score,
+        "warn",
+        f"Missing clearly-labelled section(s): {', '.join(missing)}. Add plain headers so ATS can sort your info.",
+    )
 
 
 # ── CHECK 3: Contact info ────────────────────
@@ -849,16 +886,26 @@ def check_contact(cv):
 
     score = 0
     notes = []
-    if email: score += 5
-    else: notes.append("no email")
-    if phone: score += 3
-    else: notes.append("no phone number")
-    if linkedin: score += 2
-    else: notes.append("no LinkedIn")
+    if email:
+        score += 5
+    else:
+        notes.append("no email")
+    if phone:
+        score += 3
+    else:
+        notes.append("no phone number")
+    if linkedin:
+        score += 2
+    else:
+        notes.append("no LinkedIn")
 
     if score == 10:
         return 10, "pass", "Email, phone and LinkedIn all detected."
-    return score, "warn" if score >= 5 else "fail", f"Contact gaps: {', '.join(notes)}. Add these at the top in plain text."
+    return (
+        score,
+        "warn" if score >= 5 else "fail",
+        f"Contact gaps: {', '.join(notes)}. Add these at the top in plain text.",
+    )
 
 
 # ── CHECK 4: Keyword match vs the job (Groq-powered) ──
@@ -894,10 +941,42 @@ Job description:
 
     # Fallback: if Groq fails, use a light regex grab (still works)
     if not keywords:
-        stop = {"and","the","for","with","you","are","our","this","that","will",
-                "have","your","from","they","their","what","who","all","any","can",
-                "able","role","work","team","job","etc","need","want","experience",
-                "skills","looking","strong","good","essential"}
+        stop = {
+            "and",
+            "the",
+            "for",
+            "with",
+            "you",
+            "are",
+            "our",
+            "this",
+            "that",
+            "will",
+            "have",
+            "your",
+            "from",
+            "they",
+            "their",
+            "what",
+            "who",
+            "all",
+            "any",
+            "can",
+            "able",
+            "role",
+            "work",
+            "team",
+            "job",
+            "etc",
+            "need",
+            "want",
+            "experience",
+            "skills",
+            "looking",
+            "strong",
+            "good",
+            "essential",
+        }
         raw = re.findall(r"[a-zA-Z][a-zA-Z+#]{3,}", jd.lower())
         keywords = sorted(set(w for w in raw if w not in stop))[:15]
 
@@ -981,10 +1060,16 @@ def check_formatting(cv):
         issues.append("possible multi-column or table layout (ATS may scramble this)")
     # Tabs often mean tables
     if cv.count("\t") > 5:
-        issues.append("tab characters suggest a table — flatten into single-column text")
+        issues.append(
+            "tab characters suggest a table — flatten into single-column text"
+        )
 
     if not issues:
-        return 20, "pass", "No obvious formatting red flags. Looks like clean single-column text."
+        return (
+            20,
+            "pass",
+            "No obvious formatting red flags. Looks like clean single-column text.",
+        )
     score = 20 - (len(issues) * 6)
     return max(score, 5), "warn", "Formatting risks: " + "; ".join(issues) + "."
 
@@ -1019,10 +1104,20 @@ CV text:
             if raw.startswith("json"):
                 raw = raw[4:]
         data = json.loads(raw)
-        return (int(data.get("score", 7)), data.get("status", "warn"),
-                data.get("message", ""), data.get("weak_examples", []))
+        return (
+            int(data.get("score", 7)),
+            data.get("status", "warn"),
+            data.get("message", ""),
+            data.get("weak_examples", []),
+        )
     except:
-        return 7, "warn", "Could not fully analyse phrasing — aim for strong verbs and numbers.", []
+        return (
+            7,
+            "warn",
+            "Could not fully analyse phrasing — aim for strong verbs and numbers.",
+            [],
+        )
+
 
 # ── INTERNATIONAL STUDENT LENS (the hero feature) ──
 # WHY: International students often format CVs to home-country
@@ -1037,66 +1132,82 @@ def check_international_lens(cv):
     flags = []
 
     # Date of birth / age
-    if re.search(r"\b(date of birth|d\.?o\.?b\.?|born on)\b", low) or \
-       re.search(r"\b(age)\s*[:\-]?\s*\d{1,2}\b", low):
-        flags.append({
-            "issue": "Date of birth / age detected",
-            "why": "UK CVs never include age or DOB. Recruiters must avoid age data by law — many discard CVs that show it.",
-            "fix": "Delete your date of birth and age completely."
-        })
+    if re.search(r"\b(date of birth|d\.?o\.?b\.?|born on)\b", low) or re.search(
+        r"\b(age)\s*[:\-]?\s*\d{1,2}\b", low
+    ):
+        flags.append(
+            {
+                "issue": "Date of birth / age detected",
+                "why": "UK CVs never include age or DOB. Recruiters must avoid age data by law — many discard CVs that show it.",
+                "fix": "Delete your date of birth and age completely.",
+            }
+        )
 
     # Nationality / visa status line
     if re.search(r"\b(nationality|citizenship|passport|visa status)\b", low):
-        flags.append({
-            "issue": "Nationality / passport details detected",
-            "why": "UK CVs omit nationality. You only state 'Eligible to work in the UK' if relevant — never passport or citizenship details.",
-            "fix": "Remove nationality and passport lines. If needed, add one line: 'Eligible to work in the UK with Skilled Worker sponsorship.'"
-        })
+        flags.append(
+            {
+                "issue": "Nationality / passport details detected",
+                "why": "UK CVs omit nationality. You only state 'Eligible to work in the UK' if relevant — never passport or citizenship details.",
+                "fix": "Remove nationality and passport lines. If needed, add one line: 'Eligible to work in the UK with Skilled Worker sponsorship.'",
+            }
+        )
 
     # Marital status / gender / religion
-    if re.search(r"\b(marital status|married|single|divorced|gender|sex|religion)\b", low):
-        flags.append({
-            "issue": "Personal details (marital status / gender / religion)",
-            "why": "These are illegal for UK employers to consider. CVs that include them look unprofessional and risk being discarded.",
-            "fix": "Delete marital status, gender, and religion entirely."
-        })
+    if re.search(
+        r"\b(marital status|married|single|divorced|gender|sex|religion)\b", low
+    ):
+        flags.append(
+            {
+                "issue": "Personal details (marital status / gender / religion)",
+                "why": "These are illegal for UK employers to consider. CVs that include them look unprofessional and risk being discarded.",
+                "fix": "Delete marital status, gender, and religion entirely.",
+            }
+        )
 
     # "Curriculum Vitae" as a title header
     if re.search(r"\bcurriculum vitae\b", low):
-        flags.append({
-            "issue": "'Curriculum Vitae' used as a title",
-            "why": "UK CVs don't put 'Curriculum Vitae' or 'Resume' as a heading. The page should start with your name.",
-            "fix": "Replace the 'Curriculum Vitae' header with just your full name."
-        })
+        flags.append(
+            {
+                "issue": "'Curriculum Vitae' used as a title",
+                "why": "UK CVs don't put 'Curriculum Vitae' or 'Resume' as a heading. The page should start with your name.",
+                "fix": "Replace the 'Curriculum Vitae' header with just your full name.",
+            }
+        )
 
     # Photo (we can't see images, but these words hint at one)
     if re.search(r"\b(photo|photograph|passport size|passport-size)\b", low):
-        flags.append({
-            "issue": "A photo may be included",
-            "why": "UK CVs never include a photo. Many recruiters auto-reject CVs with photos to avoid bias claims.",
-            "fix": "Remove any photo from your CV."
-        })
+        flags.append(
+            {
+                "issue": "A photo may be included",
+                "why": "UK CVs never include a photo. Many recruiters auto-reject CVs with photos to avoid bias claims.",
+                "fix": "Remove any photo from your CV.",
+            }
+        )
 
     # Full home address (line with postal patterns common abroad)
     if re.search(r"\b(father'?s name|mother'?s name|parent'?s name)\b", low):
-        flags.append({
-            "issue": "Parent / family details detected",
-            "why": "Common on CVs in some countries, but never used in the UK and seen as unprofessional here.",
-            "fix": "Remove all family/parent details."
-        })
+        flags.append(
+            {
+                "issue": "Parent / family details detected",
+                "why": "Common on CVs in some countries, but never used in the UK and seen as unprofessional here.",
+                "fix": "Remove all family/parent details.",
+            }
+        )
 
     # Build the verdict
     if not flags:
         return {
             "status": "clear",
             "headline": "No home-country CV conventions detected — your CV follows UK norms.",
-            "flags": []
+            "flags": [],
         }
     return {
         "status": "flags_found",
         "headline": f"Found {len(flags)} thing(s) that are normal abroad but hurt you in the UK market.",
-        "flags": flags
+        "flags": flags,
     }
+
 
 def generate_recruiter_notes(cv, jd, overall_score, missing_keywords, weak_bullets):
     # ─────────────────────────────────────────────
@@ -1142,6 +1253,7 @@ Missing requirements: {", ".join(missing_keywords[:5]) if missing_keywords else 
         print(f"Recruiter notes error: {e}")
         return "Couldn't generate recruiter notes this time — try analysing again."
 
+
 @app.post("/ats/analyse")
 def ats_analyse(request: ATSRequest):
     cv = request.cv_text
@@ -1159,17 +1271,55 @@ def ats_analyse(request: ATSRequest):
     international_lens = check_international_lens(cv)
 
     categories = [
-        {"name": "Parse-ability", "score": p_score, "max": 20, "status": p_status, "detail": p_msg},
-        {"name": "Keyword Match", "score": k_score, "max": 20, "status": k_status, "detail": k_msg},
-        {"name": "Standard Sections", "score": s_score, "max": 15, "status": s_status, "detail": s_msg},
-        {"name": "Contact Info", "score": c_score, "max": 10, "status": c_status, "detail": c_msg},
-        {"name": "Formatting", "score": f_score, "max": 20, "status": f_status, "detail": f_msg},
-        {"name": "Action Verbs", "score": v_score, "max": 15, "status": v_status, "detail": v_msg},
+        {
+            "name": "Parse-ability",
+            "score": p_score,
+            "max": 20,
+            "status": p_status,
+            "detail": p_msg,
+        },
+        {
+            "name": "Keyword Match",
+            "score": k_score,
+            "max": 20,
+            "status": k_status,
+            "detail": k_msg,
+        },
+        {
+            "name": "Standard Sections",
+            "score": s_score,
+            "max": 15,
+            "status": s_status,
+            "detail": s_msg,
+        },
+        {
+            "name": "Contact Info",
+            "score": c_score,
+            "max": 10,
+            "status": c_status,
+            "detail": c_msg,
+        },
+        {
+            "name": "Formatting",
+            "score": f_score,
+            "max": 20,
+            "status": f_status,
+            "detail": f_msg,
+        },
+        {
+            "name": "Action Verbs",
+            "score": v_score,
+            "max": 15,
+            "status": v_status,
+            "detail": v_msg,
+        },
     ]
 
     overall = sum(c["score"] for c in categories)
 
-    recruiter_notes = generate_recruiter_notes(cv, jd, overall, missing_keywords, weak_bullets)
+    recruiter_notes = generate_recruiter_notes(
+        cv, jd, overall, missing_keywords, weak_bullets
+    )
 
     return {
         "overall_score": overall,
@@ -1227,23 +1377,26 @@ def scrape_reed_description(url):
         if response.status_code != 200:
             return None
 
-        soup = BeautifulSoup(response.content, 'html.parser')
+        soup = BeautifulSoup(response.content, "html.parser")
 
         # Reed stores full description in this div
-        desc_div = soup.find('div', {'data-testid': 'jobDescription'})
+        desc_div = soup.find("div", {"data-testid": "jobDescription"})
         if not desc_div:
-            desc_div = soup.find('div', class_='job-description')
+            desc_div = soup.find("div", class_="job-description")
         if not desc_div:
-            desc_div = soup.find('div', {'class': lambda x: x and 'description' in x.lower()})
+            desc_div = soup.find(
+                "div", {"class": lambda x: x and "description" in x.lower()}
+            )
 
         if desc_div:
-            text = desc_div.get_text(separator=' ', strip=True)
+            text = desc_div.get_text(separator=" ", strip=True)
             return text.strip() if text else None
 
         return None
     except Exception as e:
         print(f"Reed scraper error: {e}")
         return None
+
 
 def scrape_adzuna_description(url):
     try:
@@ -1254,23 +1407,26 @@ def scrape_adzuna_description(url):
         if response.status_code != 200:
             return None
 
-        soup = BeautifulSoup(response.content, 'html.parser')
+        soup = BeautifulSoup(response.content, "html.parser")
 
         # Adzuna stores full description in this div
-        desc_div = soup.find('div', class_='job-full-description')
+        desc_div = soup.find("div", class_="job-full-description")
         if not desc_div:
-            desc_div = soup.find('div', {'data-adzuna-id': 'job-description'})
+            desc_div = soup.find("div", {"data-adzuna-id": "job-description"})
         if not desc_div:
-            desc_div = soup.find('div', {'class': lambda x: x and 'description' in x.lower()})
+            desc_div = soup.find(
+                "div", {"class": lambda x: x and "description" in x.lower()}
+            )
 
         if desc_div:
-            text = desc_div.get_text(separator=' ', strip=True)
+            text = desc_div.get_text(separator=" ", strip=True)
             return text.strip() if text else None
 
         return None
     except Exception as e:
         print(f"Adzuna scraper error: {e}")
         return None
+
 
 # ─────────────────────────────────────────────
 # SCRAPE DESCRIPTION ENDPOINT
@@ -1280,6 +1436,7 @@ def scrape_adzuna_description(url):
 class ScrapeRequest(BaseModel):
     url: str
     source: str  # "reed" or "adzuna"
+
 
 @app.post("/jobs/scrape-description")
 def scrape_description(request: ScrapeRequest):
@@ -1300,6 +1457,7 @@ def scrape_description(request: ScrapeRequest):
         return {"description": full_desc, "success": True}
     else:
         return {"description": "", "success": False}
+
 
 @app.post("/jobs/search")
 def search_jobs(request: dict):
@@ -1347,7 +1505,7 @@ def search_jobs(request: dict):
                 "source": doc.metadata.get("source", "adzuna"),
                 "fetched_at": doc.metadata.get("fetched_at", ""),
                 "description": doc.metadata.get("description", ""),
-"description_full": doc.metadata.get("description_full", ""),
+                "description_full": doc.metadata.get("description_full", ""),
                 "created": doc.metadata.get("created", ""),
                 "contract_time": doc.metadata.get("contract_time", ""),
                 "contract_type": doc.metadata.get("contract_type", ""),
@@ -1357,8 +1515,6 @@ def search_jobs(request: dict):
                 "sponsor_verified_via": doc.metadata.get("sponsor_verified_via"),
             }
         )
-
-        
 
     # Remove duplicate companies — keep best match only
     seen = set()
@@ -1377,6 +1533,7 @@ def search_jobs(request: dict):
     print(f"Job search for '{query}' returned {len(unique_jobs)} unique results")
 
     return {"jobs": unique_jobs, "count": len(unique_jobs), "query": query}
+
 
 class RecheckRequest(BaseModel):
     title: str
@@ -1450,6 +1607,7 @@ def recheck_job(request: RecheckRequest):
         "message": message,
     }
 
+
 class CompanyRolesRequest(BaseModel):
     company: str
     exclude_title: str = ""
@@ -1489,14 +1647,21 @@ def company_roles(request: CompanyRolesRequest):
                 r_company = r.get("company", {}).get("display_name", "")
                 r_title = r.get("title", "")
                 if company_low in r_company.lower() or r_company.lower() in company_low:
-                    if r_title.lower() != exclude_title and r_title.lower() not in seen_titles:
+                    if (
+                        r_title.lower() != exclude_title
+                        and r_title.lower() not in seen_titles
+                    ):
                         seen_titles.add(r_title.lower())
-                        roles.append({
-                            "title": r_title,
-                            "location": r.get("location", {}).get("display_name", location),
-                            "url": r.get("redirect_url", ""),
-                            "source": "adzuna",
-                        })
+                        roles.append(
+                            {
+                                "title": r_title,
+                                "location": r.get("location", {}).get(
+                                    "display_name", location
+                                ),
+                                "url": r.get("redirect_url", ""),
+                                "source": "adzuna",
+                            }
+                        )
     except Exception as e:
         print(f"Company roles Adzuna error: {e}")
 
@@ -1504,26 +1669,37 @@ def company_roles(request: CompanyRolesRequest):
         reed_key = os.getenv("REED_API_KEY")
         if reed_key:
             url = "https://www.reed.co.uk/api/1.0/search"
-            params = {"keywords": company, "locationName": location, "resultsToTake": 10}
+            params = {
+                "keywords": company,
+                "locationName": location,
+                "resultsToTake": 10,
+            }
             resp = http_requests.get(url, params=params, auth=(reed_key, ""))
             if resp.status_code == 200:
                 for r in resp.json().get("results", []):
                     r_company = r.get("employerName", "")
                     r_title = r.get("jobTitle", "")
-                    if company_low in r_company.lower() or r_company.lower() in company_low:
-                        if r_title.lower() != exclude_title and r_title.lower() not in seen_titles:
+                    if (
+                        company_low in r_company.lower()
+                        or r_company.lower() in company_low
+                    ):
+                        if (
+                            r_title.lower() != exclude_title
+                            and r_title.lower() not in seen_titles
+                        ):
                             seen_titles.add(r_title.lower())
-                            roles.append({
-                                "title": r_title,
-                                "location": r.get("locationName", location),
-                                "url": r.get("jobUrl", ""),
-                                "source": "reed",
-                            })
+                            roles.append(
+                                {
+                                    "title": r_title,
+                                    "location": r.get("locationName", location),
+                                    "url": r.get("jobUrl", ""),
+                                    "source": "reed",
+                                }
+                            )
     except Exception as e:
         print(f"Company roles Reed error: {e}")
 
     return {"roles": roles[:5], "count": len(roles[:5])}
-
 
 
 @app.post("/skill-gap/analyse")
@@ -1698,5 +1874,6 @@ Return ONLY the JSON. No explanation."""
 # ─────────────────────────────────────────────
 if __name__ == "__main__":
     import os
+
     port = int(os.environ.get("PORT", 7860))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)

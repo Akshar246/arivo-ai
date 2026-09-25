@@ -7,6 +7,7 @@ import Profile from "./pages/Profile";
 import Chat from "./components/Chat";
 import Landing from "./pages/Landing";
 import ATS from "./pages/ATS";
+import JobDetail from "./pages/JobDetail";
 import "./App.css";
 
 /// ─────────────────────────────────────────────
@@ -263,6 +264,17 @@ function AppRouter() {
   const { currentUser } = useAuth();
   const [page, setPage] = useState("dashboard");
   const [showLanding, setShowLanding] = useState(true);
+  const [selectedJob, setSelectedJob] = useState(null);
+  const [allJobs, setAllJobs] = useState([]);
+
+  const handleNavigate = (nextPage, data) => {
+    if (nextPage === "jobDetail" && data) {
+      setSelectedJob(data);
+      setPage("jobDetail");
+    } else {
+      setPage(nextPage);
+    }
+  };
 
   // Not logged in — route to Landing or Login
   if (!currentUser) {
@@ -276,17 +288,31 @@ function AppRouter() {
   const renderPage = () => {
     switch (page) {
       case "dashboard":
-        return <Dashboard onNavigate={setPage} />;
+        return (
+          <Dashboard
+            onNavigate={handleNavigate}
+            onJobsLoad={setAllJobs}
+          />
+        );
       case "jobs":
-        return <Jobs onNavigate={setPage} />;
+        return <Jobs onNavigate={handleNavigate} />;
+      case "jobDetail":
+        return (
+          <JobDetail
+            jobData={selectedJob}
+            allJobs={allJobs}
+            onNavigate={handleNavigate}
+            onBack={() => setPage("dashboard")}
+          />
+        );
       case "chat":
         return <Chat />;
       case "profile":
-        return <Profile onNavigate={setPage} />;
+        return <Profile onNavigate={handleNavigate} />;
       case "ats":
-        return <ATS onNavigate={setPage} />;
+        return <ATS onNavigate={handleNavigate} />;
       default:
-        return <Dashboard onNavigate={setPage} />;
+        return <Dashboard onNavigate={handleNavigate} onJobsLoad={setAllJobs} />;
     }
   };
 
