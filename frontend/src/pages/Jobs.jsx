@@ -346,20 +346,19 @@ function Detail({ job, saved, onToggleSave, onClose, onScan, onNavigate }) {
           </p>
         </div>
         <div className="aj-empty-tips">
-          <h4>International Student Strategy</h4>
+          <h4>How to Use This Feed</h4>
           <ul>
             <li>
-              <strong>Don't just apply online:</strong> The ATS will filter out
-              international passports. Find the hiring manager on LinkedIn.
+              <strong>Filter to verified sponsors:</strong> Toggle "Visa Sponsors Only" to see
+              only roles from companies on the UK Home Office register.
             </li>
             <li>
-              <strong>The Coach is your secret weapon:</strong> Use the "Draft
-              Networking Message" button inside any job to get an instant,
-              tailored outreach script.
+              <strong>Draft networking outreach:</strong> Click "Draft Networking Message" on any
+              job to get a tailored LinkedIn connection request template.
             </li>
             <li>
-              <strong>Scan before applying:</strong> Use the ATS Scanner to
-              ensure your CV matches the semantic keywords of the job.
+              <strong>Check CV readiness:</strong> Use "Scan CV" to see if your CV has ATS parsing
+              issues before submitting an application.
             </li>
           </ul>
         </div>
@@ -467,13 +466,13 @@ function Detail({ job, saved, onToggleSave, onClose, onScan, onNavigate }) {
         <div>
           <div className="aj-visa-t">
             {job.visa_sponsor
-              ? "Verified Tier 2 Sponsor"
+              ? "✓ Verified Sponsor"
               : "Sponsorship unconfirmed"}
           </div>
           <div className="aj-visa-s">
             {job.visa_sponsor
-              ? `${job.company} is on the official UK Skilled Worker register.`
-              : `We couldn't verify ${job.company} on the official sponsor register.`}
+              ? `${job.company} is on the official UK Home Office Skilled Worker register (live-verified).`
+              : `We couldn't verify ${job.company} on the official sponsor register. Apply cautiously or verify independently.`}
           </div>
         </div>
       </div>
@@ -720,10 +719,10 @@ export default function Jobs({ onNavigate }) {
 
       <div className="aj-container">
         <header className="aj-head">
-          <h1 className="aj-title">Market Intelligence Feed</h1>
+          <h1 className="aj-title">Verified Job Feed</h1>
           <p className="aj-sub">
-            Auto-calibrated to your profile. Every listing checked against the
-            official Home Office sponsor register.
+            Every listing verified against the UK Home Office sponsor register in real time.
+            Filter to roles from companies that actually sponsor visas.
           </p>
         </header>
 
