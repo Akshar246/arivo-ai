@@ -76,7 +76,7 @@ export default function Landing({ onGetStarted }) {
       {/* Nav */}
       <nav className="nav">
         <div className="nav-inner">
-          <span className="logo">Arivo</span>
+          <span className="logo">Arivo AI</span>
           <button onClick={onGetStarted} className="btn-nav">Sign In</button>
         </div>
       </nav>
@@ -137,7 +137,7 @@ export default function Landing({ onGetStarted }) {
       {/* Why Arivo */}
       <section className="why">
         <Reveal>
-          <h2>Arivo's Approach</h2>
+          <h2>Arivo AI's Approach</h2>
         </Reveal>
         <div className="why-grid">
           {WHY_ARIVO.map((item, i) => (
@@ -246,7 +246,7 @@ export default function Landing({ onGetStarted }) {
         <div className="faq-grid">
           <Reveal delay={0.1} className="faq-item">
             <h4>Is this really free?</h4>
-            <p>Yes. Early access is free. Arivo is in active development, and we're building tools for international students, not a paid product (yet).</p>
+            <p>Yes. Early access is free. Arivo AI is in active development, and we're building tools for international students, not a paid product (yet).</p>
           </Reveal>
           <Reveal delay={0.2} className="faq-item">
             <h4>How do you verify sponsorship?</h4>
@@ -277,7 +277,7 @@ export default function Landing({ onGetStarted }) {
       {/* Footer */}
       <footer className="footer">
         <div className="footer-inner">
-          <span className="logo">Arivo</span>
+          <span className="logo">Arivo AI</span>
           <div className="footer-links">
             <span>Privacy</span>
             <span>Terms</span>
