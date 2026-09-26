@@ -523,6 +523,83 @@ function ResourceCard({ skill, resource }) {
   );
 }
 
+// ── Visa eligibility logic ────────────────────────────────────
+function calculateVisaEligibility(experience, graduationYear, targetSalary) {
+  const currentYear = new Date().getFullYear();
+  const monthsSinceGraduation = (currentYear - graduationYear) * 12;
+
+  const eligibility = {
+    graduateRoute: {
+      eligible: monthsSinceGraduation <= 24 && monthsSinceGraduation >= 0,
+      status: monthsSinceGraduation <= 0 ? "Eligible from graduation" : "Eligible until " + (graduationYear + 2),
+      salaryMin: 0,
+      duration: "18-24 months"
+    },
+    tier2: {
+      eligible: experience >= 2 && (targetSalary || 0) >= 33500,
+      status: experience >= 2 ? "Eligible if salary ≥ £33.5k" : "Need 2+ years experience",
+      salaryMin: 33500,
+      duration: "Up to 6 years"
+    },
+    skillShortage: {
+      eligible: experience >= 1 && (targetSalary || 0) >= 29250,
+      status: experience >= 1 ? "Eligible if salary ≥ £29.25k (shortage occupation)" : "Need 1+ year experience",
+      salaryMin: 29250,
+      duration: "Up to 6 years"
+    }
+  };
+
+  return eligibility;
+}
+
+// ── Visa eligibility card (right pane) ────────────────────────
+function VisaEligibilityCard({ experience, graduationYear, targetSalary }) {
+  const eligibility = calculateVisaEligibility(experience, graduationYear, targetSalary);
+
+  const VisaItem = ({ label, eligible, status, salaryMin }) => (
+    <div className="pf-visa-item">
+      <div className="pf-visa-header">
+        <span className="pf-visa-label">{label}</span>
+        <span className={`pf-visa-badge ${eligible ? "is-eligible" : "is-ineligible"}`}>
+          {eligible ? Ic.check(12) : "○"}
+        </span>
+      </div>
+      <p className="pf-visa-status">{status}</p>
+      {salaryMin > 0 && (
+        <p className="pf-visa-salary">Min. salary: £{salaryMin.toLocaleString()}</p>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="pf-visa-card">
+      <div className="pf-block-hd pf-block-hd--teal">
+        {Ic.shield(12)} Visa eligibility status
+      </div>
+      <VisaItem
+        label="Graduate Route"
+        eligible={eligibility.graduateRoute.eligible}
+        status={eligibility.graduateRoute.status}
+      />
+      <VisaItem
+        label="Tier 2 Skilled Worker"
+        eligible={eligibility.tier2.eligible}
+        status={eligibility.tier2.status}
+        salaryMin={eligibility.tier2.salaryMin}
+      />
+      <VisaItem
+        label="Shortage Occupation"
+        eligible={eligibility.skillShortage.eligible}
+        status={eligibility.skillShortage.status}
+        salaryMin={eligibility.skillShortage.salaryMin}
+      />
+      <p className="pf-visa-note">
+        Based on UK Home Office requirements. Always verify with an immigration advisor.
+      </p>
+    </div>
+  );
+}
+
 // ── Right pane: identity card (pre-analysis) ──────────────────
 function IdentityCard({
   currentUser,
@@ -530,14 +607,18 @@ function IdentityCard({
   step1done,
   step2done,
   step3done,
+  step0done,
+  experience,
+  graduationYear,
+  targetSalary,
 }) {
   const tips = [
-    "Tip — upload your CV first so Arivo reads your actual skills, not guesses.",
-    "Tip — add skills manually that might not appear on your CV.",
-    "Tip — toggle 'Visa sponsors only' to filter to companies that can hire you.",
+    "Tip — complete your profile first so we can show you realistic visa eligibility.",
+    "Tip — your target salary affects which visa routes you can access.",
+    "Tip — upload your CV so Arivo reads your actual skills, not guesses.",
     "Tip — run multiple analyses with different target roles to compare readiness.",
   ];
-  const completed = [step1done, step2done, step3done].filter(Boolean).length;
+  const completed = [step0done, step1done, step2done, step3done].filter(Boolean).length;
   const tipIndex = Math.min(completed, tips.length - 1);
 
   return (
@@ -560,17 +641,25 @@ function IdentityCard({
         </div>
         <div className="pf-id-divider" />
         <div className="pf-id-stat">
-          <div className="pf-id-stat-val">{completed}/3</div>
+          <div className="pf-id-stat-val">{completed}/4</div>
           <div className="pf-id-stat-lbl">Steps done</div>
         </div>
         <div className="pf-id-divider" />
         <div className="pf-id-stat">
           <div className="pf-id-stat-val">
-            {completed === 3 ? "Ready" : "Setup"}
+            {completed === 4 ? "Ready" : "Setup"}
           </div>
           <div className="pf-id-stat-lbl">Status</div>
         </div>
       </div>
+
+      {step0done && (
+        <VisaEligibilityCard
+          experience={experience}
+          graduationYear={graduationYear}
+          targetSalary={targetSalary}
+        />
+      )}
 
       <div className="pf-tip">
         {Ic.sparkle(13)}
@@ -578,8 +667,8 @@ function IdentityCard({
       </div>
 
       <div className="pf-steps-mini">
-        {["Upload CV", "Add skills", "Run analysis"].map((label, i) => {
-          const done = [step1done, step2done, step3done][i];
+        {["Set visa target", "Upload CV", "Add skills", "Run analysis"].map((label, i) => {
+          const done = [step0done, step1done, step2done, step3done][i];
           return (
             <div key={i} className={`pf-step-mini ${done ? "is-done" : ""}`}>
               <div className="pf-step-mini-dot">
@@ -692,6 +781,12 @@ function Results({ r }) {
 // ═══════════════════════════════════════════════════════════════
 function Profile() {
   const { currentUser, token } = useAuth();
+
+  // Profile setup (Step 0)
+  const [experience, setExperience] = useState(currentUser?.experience || 0);
+  const [graduationYear, setGraduationYear] = useState(currentUser?.graduationYear || new Date().getFullYear());
+  const [targetRole0, setTargetRole0] = useState(currentUser?.targetRole || "");
+  const [targetSalary, setTargetSalary] = useState(currentUser?.targetSalary || 40000);
 
   // CV
   const [cvFile, setCvFile] = useState(null);
@@ -816,6 +911,7 @@ function Profile() {
   };
 
   // ── Derived ───────────────────────────────────────────────
+  const step0done = experience > 0 && graduationYear && targetRole0.trim();
   const step1done = cvUploaded;
   const step2done = allSkills.length > 0;
   const step3done = !!gapResult && !gapResult?.error;
@@ -851,12 +947,12 @@ function Profile() {
                 cy="22"
                 r="18"
                 className="pf-prog-arc"
-                strokeDasharray={`${([step1done, step2done, step3done].filter(Boolean).length / 3) * 113.1} 113.1`}
+                strokeDasharray={`${([step0done, step1done, step2done, step3done].filter(Boolean).length / 4) * 113.1} 113.1`}
                 transform="rotate(-90 22 22)"
               />
             </svg>
             <div className="pf-prog-label">
-              {[step1done, step2done, step3done].filter(Boolean).length}/3
+              {[step0done, step1done, step2done, step3done].filter(Boolean).length}/4
             </div>
           </div>
         </div>
@@ -866,6 +962,80 @@ function Profile() {
       <div className="pf-cockpit">
         {/* LEFT — action panel */}
         <div className="pf-left">
+          {/* Step 0 — Visa & Profile Setup */}
+          <div className="pf-step-card">
+            <StepHeader
+              n={0}
+              done={step0done}
+              title="Your profile"
+              sub={
+                step0done
+                  ? `${experience} years exp · graduating ${graduationYear}`
+                  : "Target visa route & role"
+              }
+              open={openStep === 0}
+              onToggle={() => toggleStep(0)}
+            />
+            {openStep === 0 && (
+              <div className="pf-step-body">
+                <div className="pf-form-group">
+                  <label className="pf-label">Years of experience</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="50"
+                    className="pf-input pf-input--block"
+                    value={experience}
+                    onChange={(e) => setExperience(Number(e.target.value))}
+                  />
+                </div>
+
+                <div className="pf-form-group">
+                  <label className="pf-label">Graduation year</label>
+                  <input
+                    type="number"
+                    min={new Date().getFullYear() - 10}
+                    max={new Date().getFullYear() + 1}
+                    className="pf-input pf-input--block"
+                    value={graduationYear}
+                    onChange={(e) => setGraduationYear(Number(e.target.value))}
+                  />
+                </div>
+
+                <div className="pf-form-group">
+                  <label className="pf-label">Target role</label>
+                  <input
+                    className="pf-input pf-input--block"
+                    value={targetRole0}
+                    onChange={(e) => setTargetRole0(e.target.value)}
+                    placeholder="e.g. Software Engineer, Data Analyst…"
+                  />
+                </div>
+
+                <div className="pf-form-group">
+                  <label className="pf-label">Target salary (£)</label>
+                  <div className="pf-salary-input">
+                    <input
+                      type="number"
+                      min="20000"
+                      step="1000"
+                      className="pf-input"
+                      value={targetSalary}
+                      onChange={(e) => setTargetSalary(Number(e.target.value))}
+                    />
+                    <span className="pf-salary-note">
+                      Affects visa route eligibility
+                    </span>
+                  </div>
+                </div>
+
+                <p className="pf-form-hint">
+                  We use this to show realistic visa eligibility. Always verify with UK immigration.
+                </p>
+              </div>
+            )}
+          </div>
+
           {/* Step 1 */}
           <div className="pf-step-card">
             <StepHeader
@@ -1083,9 +1253,13 @@ function Profile() {
             <IdentityCard
               currentUser={currentUser}
               allSkills={allSkills}
+              step0done={step0done}
               step1done={step1done}
               step2done={step2done}
               step3done={step3done}
+              experience={experience}
+              graduationYear={graduationYear}
+              targetSalary={targetSalary}
             />
           )}
         </div>
@@ -1564,6 +1738,65 @@ const CSS = `
 }
 .pf-toast--error   { background:rgba(28,10,12,.92); border:1px solid rgba(255,107,107,.3); color:#ffc9c9; }
 .pf-toast--success { background:rgba(8,24,20,.92);  border:1px solid rgba(0,212,170,.3);   color:#99f5e4; }
+
+/* ── Form groups ─────────────────────────────────────────────── */
+.pf-form-group {
+  margin-bottom:16px;
+}
+.pf-form-group:last-child {
+  margin-bottom:0;
+}
+.pf-label {
+  display:block; font-size:12px; font-weight:600; color:var(--tx);
+  margin-bottom:7px; text-transform:uppercase; letter-spacing:.05em;
+}
+.pf-form-hint {
+  font-size:11px; color:var(--tx3); margin:12px 0 0;
+}
+
+/* Salary input */
+.pf-salary-input { display:flex; flex-direction:column; gap:6px; }
+.pf-salary-input .pf-input { margin:0; }
+.pf-salary-note {
+  font-size:11px; color:var(--tx3);
+}
+
+/* ── Visa eligibility card ────────────────────────────────────── */
+.pf-visa-card {
+  background:rgba(0,212,170,.05); border:1px solid rgba(0,212,170,.15);
+  border-radius:14px; padding:16px; margin-top:18px;
+}
+.pf-visa-item {
+  padding:13px 0; border-bottom:1px solid rgba(0,212,170,.1);
+}
+.pf-visa-item:last-child {
+  border-bottom:none; padding-bottom:0;
+}
+.pf-visa-header {
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  margin-bottom:6px;
+}
+.pf-visa-label {
+  font-size:12px; font-weight:600; color:var(--tx);
+}
+.pf-visa-badge {
+  display:inline-flex; align-items:center; justify-content:center;
+  width:20px; height:20px; border-radius:50%;
+  background:rgba(0,212,170,.1); color:var(--tx3); font-size:13px;
+  flex-shrink:0;
+}
+.pf-visa-badge.is-eligible {
+  background:rgba(0,212,170,.2); color:var(--tl);
+}
+.pf-visa-status {
+  margin:0; font-size:11.5px; color:var(--tx2); line-height:1.4;
+}
+.pf-visa-salary {
+  margin:4px 0 0; font-size:10.5px; color:var(--tx3);
+}
+.pf-visa-note {
+  font-size:10px; color:var(--tx3); margin:14px 0 0; font-style:italic;
+}
 
 /* ── Quality floor ───────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
