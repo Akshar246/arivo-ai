@@ -8,8 +8,9 @@ const path = require("path");
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     // Save all uploaded CVs to uploads/ folder
-    // cb means callback — Node.js async pattern
-    cb(null, "uploads/");
+    // Use absolute path to work from any directory
+    const uploadsDir = path.join(__dirname, "../uploads");
+    cb(null, uploadsDir);
   },
   filename: function (req, file, cb) {
     // Name the file with timestamp + original name
