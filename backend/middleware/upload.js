@@ -6,20 +6,21 @@ const fs = require("fs");
 // Storage config
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    // Production (Vercel/Render/any) → /tmp
-    // Local/Dev → uploads/
-    const isProduction = process.env.NODE_ENV === "production" ||
-                        process.env.VERCEL ||
-                        process.env.RENDER ||
-                        process.env.RAILWAY;
+    // Try local uploads folder first
+    // If it doesn't exist or not writable → use /tmp (production safe)
+    const localUploadsDir = path.join(__dirname, "../uploads");
 
     let uploadsDir;
-    if (isProduction) {
-      // Production: use system temp (ephemeral, works on serverless)
+    try {
+      // Check if we can write to local uploads folder
+      if (fs.existsSync(localUploadsDir) && fs.accessSync(localUploadsDir, fs.constants.W_OK)) {
+        uploadsDir = localUploadsDir;
+      } else {
+        throw new Error("Local uploads not writable");
+      }
+    } catch (err) {
+      // Fall back to system temp (safe for production)
       uploadsDir = path.join(os.tmpdir(), "cv-uploads");
-    } else {
-      // Local/Dev: use project uploads folder
-      uploadsDir = path.join(__dirname, "../uploads");
     }
 
     // Ensure directory exists
@@ -27,7 +28,7 @@ const storage = multer.diskStorage({
       fs.mkdirSync(uploadsDir, { recursive: true });
     }
 
-    console.log(`CV upload destination: ${uploadsDir} (production: ${isProduction})`);
+    console.log("CV upload to: " + uploadsDir);
     cb(null, uploadsDir);
   },
   filename: function (req, file, cb) {
