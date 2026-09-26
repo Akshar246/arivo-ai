@@ -127,6 +127,111 @@ const scoreBand = (s) => {
 const statusColor = (status) =>
   status === "pass" ? C.green : status === "warn" ? C.amber : C.red;
 
+// ── International CV Converter ──────────────────────────────────
+const convertToUKFormat = (cvText) => {
+  let converted = cvText;
+  const removed = [];
+
+  // Remove DOB patterns (various formats)
+  const dobPatterns = [
+    /date\s+of\s+birth[:\s]+[\d\s/\-\.]+/gi,
+    /dob[:\s]+[\d\s/\-\.]+/gi,
+    /born[:\s]+[\d\s/\-\.]+/gi,
+    /\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/g,
+  ];
+  dobPatterns.forEach(pattern => {
+    if (pattern.test(converted)) {
+      removed.push("Date of birth");
+      converted = converted.replace(pattern, "");
+    }
+  });
+
+  // Remove photo/image references
+  if (/photo|image|picture|headshot|passport|profile pic/i.test(converted)) {
+    removed.push("Photo reference");
+    converted = converted.replace(/photo|image|picture|headshot|passport|profile pic[:\s]*.*/gi, "");
+  }
+
+  // Remove marital status, religion, ethnicity
+  const sensitivePatterns = [
+    { pattern: /marital\s+status[:\s]+\w+/gi, label: "Marital status" },
+    { pattern: /religion[:\s]+\w+/gi, label: "Religion" },
+    { pattern: /ethnicity[:\s]+\w+/gi, label: "Ethnicity" },
+    { pattern: /gender[:\s]+\w+/gi, label: "Gender" },
+    { pattern: /nationality[:\s]+\w+/gi, label: "Nationality" },
+  ];
+  sensitivePatterns.forEach(({ pattern, label }) => {
+    if (pattern.test(converted)) {
+      removed.push(label);
+      converted = converted.replace(pattern, "");
+    }
+  });
+
+  // Convert date formats MM/DD/YYYY to DD/MM/YYYY (if US format detected)
+  const usDatePattern = /\b(0?[1-9]|1[0-2])\/(0?[1-9]|[12]\d|3[01])\/(\d{4})\b/g;
+  if (usDatePattern.test(converted)) {
+    removed.push("Date format (US→UK)");
+    converted = converted.replace(usDatePattern, (match, m, d, y) => {
+      return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+    });
+  }
+
+  // American → British English
+  const ukConversions = [
+    { us: /\bresume\b/gi, uk: "CV", label: "resume→CV" },
+    { us: /\bcolor\b/gi, uk: "colour", label: "color→colour" },
+    { us: /\borganized\b/gi, uk: "organised", label: "organized→organised" },
+    { us: /\banalyze\b/gi, uk: "analyse", label: "analyze→analyse" },
+    { us: /\blicense\b/gi, uk: "licence", label: "license→licence" },
+  ];
+  const converted_text = converted;
+  const flagged = [];
+  ukConversions.forEach(({ us, uk, label }) => {
+    if (us.test(converted)) {
+      flagged.push(label);
+      converted = converted.replace(us, uk);
+    }
+  });
+
+  return { converted, removed, flagged };
+};
+
+// ── Application Risk Score ──────────────────────────────────
+const calculateRiskScore = (atsScore, jobDescription, cvText) => {
+  // Extract keywords from job description
+  const jobWords = jobDescription.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+  const cvWords = cvText.toLowerCase().split(/\s+/);
+
+  // Calculate skills match
+  const matchedWords = jobWords.filter(w => cvWords.includes(w));
+  const skillsMatch = jobWords.length > 0 ? Math.round((matchedWords.length / jobWords.length) * 100) : 0;
+
+  // Calculate risk level
+  let riskLevel = "HIGH RISK";
+  let riskColor = C.red;
+  let recommendation = "";
+
+  if (atsScore >= 75 && skillsMatch >= 70) {
+    riskLevel = "LOW RISK";
+    riskColor = C.green;
+    recommendation = "Your CV is strong for this role. Good chance of passing screening.";
+  } else if (atsScore >= 60 && skillsMatch >= 50) {
+    riskLevel = "MEDIUM RISK";
+    riskColor = C.amber;
+    recommendation = "Good ATS score but skills gap exists. Consider upskilling or targeting similar roles.";
+  } else if (atsScore >= 50) {
+    riskLevel = "MEDIUM RISK";
+    riskColor = C.amber;
+    recommendation = "Fix CV formatting issues first, then address skills gaps.";
+  } else {
+    riskLevel = "HIGH RISK";
+    riskColor = C.red;
+    recommendation = "Significant gaps in both ATS readiness and skills. Invest in CV improvements before applying.";
+  }
+
+  return { skillsMatch, riskLevel, riskColor, recommendation };
+};
+
 export default function ATS({ onNavigate }) {
   // AMNESIA FIX + ESLINT CASCADING RENDER FIX:
   // We process the sessionStorage directly during the useState initialization.
@@ -339,6 +444,8 @@ export default function ATS({ onNavigate }) {
               onNavigate={onNavigate}
               extractedText={extractedText}
               onShowRaw={() => setShowRaw(true)}
+              jobDescription={jobText}
+              cvText={extractedText}
             />
           )
         )}
@@ -633,7 +740,7 @@ function Invite(props) {
   );
 }
 
-function Results({ result, reset, onNavigate, extractedText, onShowRaw }) {
+function Results({ result, reset, onNavigate, extractedText, onShowRaw, jobDescription = "", cvText = "" }) {
   const {
     overall_score = 0,
     categories = [],
@@ -645,6 +752,14 @@ function Results({ result, reset, onNavigate, extractedText, onShowRaw }) {
   const lensHasFlags =
     international_lens.status === "flags_found" &&
     (international_lens.flags || []).length > 0;
+
+  // Convert CV to UK format
+  const ukConverted = convertToUKFormat(cvText);
+
+  // Calculate risk score
+  const riskMetrics = calculateRiskScore(overall_score, jobDescription, cvText);
+
+  const [showConverted, setShowConverted] = useState(false);
 
   // THE MAGIC WAND BRIDGE
   const handleRewriteBridge = (bullet) => {
@@ -658,10 +773,29 @@ function Results({ result, reset, onNavigate, extractedText, onShowRaw }) {
       <div className="ats-res-hero">
         <RadialGauge score={overall_score} />
         <div className="ats-res-verdict">
-          <h2 className="ats-res-h">Your ATS Readiness</h2>
-          <p className="ats-res-p">
-            This is how well your CV holds up against automated screening for
-            the job you pasted.
+          <h2 className="ats-res-h">Your Application Viability</h2>
+          <div className="ats-risk-cards">
+            <div className="ats-risk-card">
+              <div className="ats-risk-label">ATS Readiness</div>
+              <div className="ats-risk-value" style={{ color: statusColor(overall_score >= 75 ? "pass" : overall_score >= 50 ? "warn" : "fail") }}>
+                {overall_score}/100
+              </div>
+            </div>
+            <div className="ats-risk-card">
+              <div className="ats-risk-label">Skills Match</div>
+              <div className="ats-risk-value" style={{ color: statusColor(riskMetrics.skillsMatch >= 70 ? "pass" : riskMetrics.skillsMatch >= 50 ? "warn" : "fail") }}>
+                {riskMetrics.skillsMatch}%
+              </div>
+            </div>
+            <div className="ats-risk-card ats-risk-level">
+              <div className="ats-risk-label">Overall Risk</div>
+              <div className="ats-risk-value" style={{ color: riskMetrics.riskColor }}>
+                {riskMetrics.riskLevel}
+              </div>
+            </div>
+          </div>
+          <p className="ats-res-recommendation">
+            {riskMetrics.recommendation}
           </p>
           <div className="ats-res-btns">
             <button className="ats-btn-ghost" onClick={reset}>
@@ -675,6 +809,53 @@ function Results({ result, reset, onNavigate, extractedText, onShowRaw }) {
           </div>
         </div>
       </div>
+
+      {/* UK Format Converter */}
+      <section className="ats-converter">
+        <div className="ats-converter-head">
+          <span className="ats-converter-badge">🇬🇧 UK-Ready CV Conversion</span>
+          <span className="ats-converter-sub">Home-country CV conventions that may affect UK screening</span>
+        </div>
+        {ukConverted.removed.length > 0 || ukConverted.flagged.length > 0 ? (
+          <div className="ats-converter-findings">
+            {ukConverted.removed.length > 0 && (
+              <div className="ats-converter-group">
+                <div className="ats-converter-group-title">Removed for UK standards:</div>
+                <div className="ats-converter-items">
+                  {ukConverted.removed.map((item, i) => (
+                    <span key={i} className="ats-converter-item removed">✕ {item}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {ukConverted.flagged.length > 0 && (
+              <div className="ats-converter-group">
+                <div className="ats-converter-group-title">Converted for UK market:</div>
+                <div className="ats-converter-items">
+                  {ukConverted.flagged.map((item, i) => (
+                    <span key={i} className="ats-converter-item converted">⟳ {item}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            <button
+              className="ats-converter-view-btn"
+              onClick={() => setShowConverted(!showConverted)}
+            >
+              {showConverted ? "Hide converted CV" : "View converted CV text"}
+            </button>
+            {showConverted && (
+              <div className="ats-converter-preview">
+                <pre>{ukConverted.converted}</pre>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="ats-converter-clear">
+            ✓ Your CV follows UK conventions. No home-country formatting issues found.
+          </div>
+        )}
+      </section>
 
       {recruiter_notes && (
         <section className="ats-monologue">
@@ -941,9 +1122,33 @@ const css = `
 .ats-res { display:flex; flex-direction:column; gap:26px; animation: ats-up .5s ease both; max-width: 1000px; margin: 0 auto; }
 .ats-res-hero { display:flex; align-items:center; gap:32px; background:${C.panel}; border:1px solid ${C.border}; border-radius:20px; padding:30px 32px; flex-wrap:wrap; }
 .ats-res-verdict { flex:1; min-width:260px; }
-.ats-res-h { font-size:22px; font-weight:800; letter-spacing:-.02em; color:${C.text}; margin:0 0 8px; }
+.ats-res-h { font-size:22px; font-weight:800; letter-spacing:-.02em; color:${C.text}; margin:0 0 16px; }
+.ats-risk-cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:12px; margin-bottom:16px; }
+.ats-risk-card { background:${C.inset}; border:1px solid ${C.border}; border-radius:12px; padding:16px 14px; text-align:center; }
+.ats-risk-card.ats-risk-level { background:linear-gradient(135deg, rgba(124,111,239,.12), rgba(232,121,249,.08)); border-color:${C.borderHi}; }
+.ats-risk-label { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:${C.text3}; margin-bottom:8px; }
+.ats-risk-value { font-size:20px; font-weight:800; }
+.ats-res-recommendation { font-size:13.5px; line-height:1.6; color:${C.text2}; margin:0 0 16px; padding:12px 14px; background:rgba(124,111,239,.06); border:1px solid ${C.borderHi}; border-radius:10px; }
 .ats-res-p { font-size:14px; line-height:1.6; color:${C.text2}; margin:0 0 16px; }
 .ats-res-btns { display:flex; gap:10px; flex-wrap:wrap; }
+
+/* CV Converter */
+.ats-converter { background:${C.panel}; border:1px solid ${C.border}; border-radius:16px; padding:24px; }
+.ats-converter-head { display:flex; flex-direction:column; gap:8px; margin-bottom:16px; }
+.ats-converter-badge { align-self:flex-start; font-size:13px; font-weight:800; color:${C.text}; background:rgba(255,255,255,.06); padding:6px 13px; border-radius:999px; border:1px solid ${C.border}; }
+.ats-converter-sub { font-size:12px; color:${C.text3}; line-height:1.5; }
+.ats-converter-findings { display:flex; flex-direction:column; gap:16px; }
+.ats-converter-group { display:flex; flex-direction:column; gap:10px; }
+.ats-converter-group-title { font-size:12.5px; font-weight:700; color:${C.text2}; text-transform:uppercase; letter-spacing:.05em; }
+.ats-converter-items { display:flex; flex-wrap:wrap; gap:8px; }
+.ats-converter-item { font-size:12px; font-weight:600; padding:6px 12px; border-radius:8px; white-space:nowrap; }
+.ats-converter-item.removed { background:rgba(255,122,122,.12); color:#ff9999; border:1px solid rgba(255,122,122,.2); }
+.ats-converter-item.converted { background:rgba(0,212,170,.12); color:${C.green}; border:1px solid rgba(0,212,170,.2); }
+.ats-converter-view-btn { background:transparent; border:1px solid ${C.border}; color:${C.text2}; padding:10px 16px; border-radius:10px; font-size:12.5px; font-weight:700; cursor:pointer; transition:all .2s; font-family:inherit; }
+.ats-converter-view-btn:hover { border-color:${C.borderHi}; color:${C.text}; }
+.ats-converter-preview { background:${C.inset}; border:1px solid ${C.border}; border-radius:12px; padding:16px; margin-top:12px; max-height:300px; overflow-y:auto; }
+.ats-converter-preview pre { margin:0; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px; line-height:1.5; color:${C.text2}; white-space:pre-wrap; word-break:break-word; }
+.ats-converter-clear { font-size:13px; color:${C.green}; padding:12px 14px; background:rgba(0,212,170,.06); border:1px solid rgba(0,212,170,.2); border-radius:10px; text-align:center; }
 .ats-btn-ghost { background:transparent; border:1px solid ${C.border}; color:${C.text2}; padding:10px 18px; border-radius:999px; cursor:pointer; font-size:13px; font-weight: 600; font-family:inherit; transition: all 0.2s; }
 .ats-btn-ghost:hover { color:${C.text}; border-color:${C.borderHi}; background: rgba(255,255,255,0.05); }
 
