@@ -3,40 +3,55 @@ const path = require("path");
 const os = require("os");
 const fs = require("fs");
 
-// Storage config
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    // Try local uploads folder first
-    // If it doesn't exist or not writable → use /tmp (production safe)
+    console.log("\n===== MULTER DESTINATION DEBUG =====");
+    console.log("Current __dirname:", __dirname);
+
     const localUploadsDir = path.join(__dirname, "../uploads");
+    console.log("Local uploads path:", localUploadsDir);
+    console.log("Local uploads EXISTS:", fs.existsSync(localUploadsDir));
+
+    let localIsWritable = false;
+    if (fs.existsSync(localUploadsDir)) {
+      try {
+        fs.accessSync(localUploadsDir, fs.constants.W_OK);
+        localIsWritable = true;
+        console.log("Local uploads IS WRITABLE");
+      } catch (e) {
+        console.log("Local uploads NOT WRITABLE:", e.code);
+      }
+    }
 
     let uploadsDir;
-    try {
-      // Check if we can write to local uploads folder
-      if (fs.existsSync(localUploadsDir) && fs.accessSync(localUploadsDir, fs.constants.W_OK)) {
-        uploadsDir = localUploadsDir;
-      } else {
-        throw new Error("Local uploads not writable");
-      }
-    } catch (err) {
-      // Fall back to system temp (safe for production)
+    if (fs.existsSync(localUploadsDir) && localIsWritable) {
+      uploadsDir = localUploadsDir;
+      console.log("CHOICE: Using LOCAL folder");
+    } else {
       uploadsDir = path.join(os.tmpdir(), "cv-uploads");
+      console.log("CHOICE: Using /TMP folder (reason: local not available)");
     }
 
-    // Ensure directory exists
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
+    try {
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+        console.log("Created:", uploadsDir);
+      }
+    } catch (mkErr) {
+      console.log("ERROR creating dir:", mkErr.message);
     }
 
-    console.log("CV upload to: " + uploadsDir);
+    console.log("FINAL PATH:", uploadsDir);
+    console.log("====================================\n");
+
     cb(null, uploadsDir);
   },
+
   filename: function (req, file, cb) {
     cb(null, Date.now() + "-" + file.originalname);
   },
 });
 
-// File filter - only PDF
 const fileFilter = (req, file, cb) => {
   const isPDF =
     file.mimetype === "application/pdf" ||
@@ -50,7 +65,6 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-// Multer instance
 const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
