@@ -6,16 +6,19 @@ const fs = require("fs");
 // Storage config
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    // For serverless (Vercel/Render): use /tmp
-    // For local/Docker: use uploads/
-    const isServerless = process.env.VERCEL || process.env.RENDER;
+    // Production (Vercel/Render/any) → /tmp
+    // Local/Dev → uploads/
+    const isProduction = process.env.NODE_ENV === "production" ||
+                        process.env.VERCEL ||
+                        process.env.RENDER ||
+                        process.env.RAILWAY;
 
     let uploadsDir;
-    if (isServerless) {
-      // Serverless: use system temp (ephemeral)
+    if (isProduction) {
+      // Production: use system temp (ephemeral, works on serverless)
       uploadsDir = path.join(os.tmpdir(), "cv-uploads");
     } else {
-      // Local/Docker: use project uploads folder
+      // Local/Dev: use project uploads folder
       uploadsDir = path.join(__dirname, "../uploads");
     }
 
@@ -24,6 +27,7 @@ const storage = multer.diskStorage({
       fs.mkdirSync(uploadsDir, { recursive: true });
     }
 
+    console.log(`CV upload destination: ${uploadsDir} (production: ${isProduction})`);
     cb(null, uploadsDir);
   },
   filename: function (req, file, cb) {
