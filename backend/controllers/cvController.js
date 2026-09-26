@@ -12,22 +12,36 @@ const FormData = require("form-data");
 // Python handles PDF much better than Node.js
 // ─────────────────────────────────────────────
 const extractTextFromPDF = async (filePath) => {
-  // Create a form with the PDF file attached
-  const form = new FormData();
-  form.append("file", fs.createReadStream(filePath), {
-    filename: "cv.pdf",
-    contentType: "application/pdf",
-  });
+  try {
+    // Check file exists before trying to read
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`File not found at: ${filePath}`);
+    }
 
-  // Send to Python AI service for extraction
-  const response = await axios.post(
-    `${AI_SERVICE_URL}/extract-pdf`,
-    form,
-    { headers: form.getHeaders() }
-  );
+    console.log(`Reading file: ${filePath}`);
 
-  console.log(`Extracted ${response.data.characters} characters from ${response.data.pages} pages`);
-  return response.data.text;
+    // Create a form with the PDF file attached
+    const form = new FormData();
+    form.append("file", fs.createReadStream(filePath), {
+      filename: "cv.pdf",
+      contentType: "application/pdf",
+    });
+
+    console.log(`Sending to AI service: ${AI_SERVICE_URL}/extract-pdf`);
+
+    // Send to Python AI service for extraction
+    const response = await axios.post(
+      `${AI_SERVICE_URL}/extract-pdf`,
+      form,
+      { headers: form.getHeaders() }
+    );
+
+    console.log(`Extracted ${response.data.characters} characters from ${response.data.pages} pages`);
+    return response.data.text;
+  } catch (error) {
+    console.error("PDF extraction error:", error.message);
+    throw error;
+  }
 };
 
 // ─────────────────────────────────────────────
@@ -89,7 +103,18 @@ const uploadCV = async (req, res) => {
 
   } catch (error) {
     console.error("CV upload error:", error.message);
-    res.status(500).json({ message: "Error processing CV" });
+    console.error("Full stack:", error.stack);
+    console.error("Error details:", JSON.stringify({
+      message: error.message,
+      code: error.code,
+      path: error.path,
+      errno: error.errno,
+    }));
+    res.status(500).json({
+      message: "Error processing CV",
+      error: error.message,
+      details: process.env.NODE_ENV === "development" ? error.stack : undefined
+    });
   }
 };
 
