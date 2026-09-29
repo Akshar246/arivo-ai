@@ -5,7 +5,9 @@ import { useAuth } from "../context/AuthContext";
 const CV_ENDPOINT = `${import.meta.env.VITE_API_URL}/api/cv/upload`;
 const GAP_ENDPOINT = `${import.meta.env.VITE_AI_URL}/skill-gap/analyse`;
 
-// Utilities
+// ─────────────────────────────────────────────
+// UTILITIES
+// ─────────────────────────────────────────────
 const prefersReducedMotion = () => {
   try {
     return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -57,7 +59,9 @@ function useCountUp(target, duration = 1000) {
   return value;
 }
 
-// Icons
+// ─────────────────────────────────────────────
+// ICONS
+// ─────────────────────────────────────────────
 const Ic = {
   upload: (s = 20) => (
     <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -103,9 +107,38 @@ const Ic = {
       <path d="M12 5v14M5 12h14" />
     </svg>
   ),
+  map: (s = 18) => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+      <circle cx="12" cy="10" r="3" />
+    </svg>
+  ),
+  target: (s = 18) => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="1" />
+      <circle cx="12" cy="12" r="5" />
+      <circle cx="12" cy="12" r="9" />
+    </svg>
+  ),
+  briefcase: (s = 18) => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+      <path d="M16 7v-2a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+    </svg>
+  ),
+  mic: (s = 18) => (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 1a3 3 0 0 0-3 3v12a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+      <line x1="12" y1="19" x2="12" y2="23" />
+      <line x1="8" y1="23" x2="16" y2="23" />
+    </svg>
+  ),
 };
 
-// Toast
+// ─────────────────────────────────────────────
+// TOAST COMPONENT
+// ─────────────────────────────────────────────
 function Toast({ toast }) {
   if (!toast) return null;
   return (
@@ -115,29 +148,70 @@ function Toast({ toast }) {
   );
 }
 
-// Step Header
-function StepHeader({ n, done, title, sub, open, onToggle }) {
+// ─────────────────────────────────────────────
+// RADIAL GAUGE
+// ─────────────────────────────────────────────
+function RadialGauge({ score }) {
+  const safe = Math.max(0, Math.min(100, Number(score) || 0));
+  const shown = useCountUp(safe, 1200);
+  const band = scoreBand(safe);
+  const r = 52;
+  const C = 2 * Math.PI * r;
+  const offset = C * (1 - shown / 100);
+
   return (
-    <button
-      className={`prof-step-hd ${done ? "is-done" : ""} ${open ? "is-open" : ""}`}
-      onClick={onToggle}
-      aria-expanded={open}
-    >
-      <div className={`prof-step-node ${done ? "is-done" : ""}`}>
-        {done ? Ic.check(13) : <span>{n}</span>}
+    <div className="prof-gauge">
+      <svg viewBox="0 0 120 120" className="prof-gauge-svg" aria-hidden="true">
+        <defs>
+          <linearGradient id="g-good-prof" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#00d4aa" />
+            <stop offset="100%" stopColor="#7c6fef" />
+          </linearGradient>
+          <linearGradient id="g-mid-prof" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#f5c451" />
+            <stop offset="100%" stopColor="#e879f9" />
+          </linearGradient>
+          <linearGradient id="g-low-prof" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="#ff7a7a" />
+            <stop offset="100%" stopColor="#e879f9" />
+          </linearGradient>
+        </defs>
+        <circle cx="60" cy="60" r={r} className="prof-gauge-track" />
+        <circle
+          cx="60"
+          cy="60"
+          r={r}
+          className="prof-gauge-arc"
+          stroke={safe >= 60 ? "url(#g-good-prof)" : safe >= 30 ? "url(#g-mid-prof)" : "url(#g-low-prof)"}
+          strokeDasharray={C}
+          strokeDashoffset={offset}
+          transform="rotate(-90 60 60)"
+        />
+      </svg>
+      <div className="prof-gauge-inner">
+        <div className="prof-gauge-num">{shown}<span>/100</span></div>
+        <div className="prof-gauge-band" style={{ color: band.text }}>{band.label}</div>
       </div>
-      <div className="prof-step-label">
-        <div className="prof-step-title">{title}</div>
-        {sub && <div className="prof-step-sub">{sub}</div>}
-      </div>
-      <div className={`prof-step-chevron ${open ? "is-open" : ""}`}>
-        {Ic.chevron(14)}
-      </div>
-    </button>
+    </div>
   );
 }
 
-// Dropzone
+// ─────────────────────────────────────────────
+// STAT COMPONENT
+// ─────────────────────────────────────────────
+function Stat({ value, label, color }) {
+  const n = useCountUp(Number(value) || 0, 900);
+  return (
+    <div className="prof-stat">
+      <div className="prof-stat-val" style={{ color }}>{n}</div>
+      <div className="prof-stat-label">{label}</div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// DROPZONE COMPONENT
+// ─────────────────────────────────────────────
 function Dropzone({ file, loading, uploaded, onPick, onClear, onUpload }) {
   const inputRef = useRef(null);
   const [drag, setDrag] = useState(false);
@@ -229,66 +303,102 @@ function Dropzone({ file, loading, uploaded, onPick, onClear, onUpload }) {
   );
 }
 
-// Radial Gauge
-function RadialGauge({ score }) {
-  const safe = Math.max(0, Math.min(100, Number(score) || 0));
-  const shown = useCountUp(safe, 1200);
-  const band = scoreBand(safe);
-  const r = 52;
-  const C = 2 * Math.PI * r;
-  const offset = C * (1 - shown / 100);
+// ─────────────────────────────────────────────
+// CAREER ROADMAP COMPONENT
+// ─────────────────────────────────────────────
+function CareerRoadmap({ currentRole, targetRole, currentSkills, gapResult }) {
+  const stages = [
+    { level: "Current", label: "Your Profile", skills: currentSkills?.length || 0, icon: "🎓" },
+    { level: "Intermediate", label: "Consolidate", skills: Math.ceil((currentSkills?.length || 0) * 1.3), icon: "📈" },
+    { level: "Advanced", label: "Specialize", skills: Math.ceil((currentSkills?.length || 0) * 1.7), icon: "⭐" },
+    { level: "Expert", label: targetRole || "Target Role", skills: Math.ceil((currentSkills?.length || 0) * 2.2), icon: "🚀" },
+  ];
 
   return (
-    <div className="prof-gauge">
-      <svg viewBox="0 0 120 120" className="prof-gauge-svg" aria-hidden="true">
-        <defs>
-          <linearGradient id="g-good-prof" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#00d4aa" />
-            <stop offset="100%" stopColor="#7c6fef" />
-          </linearGradient>
-          <linearGradient id="g-mid-prof" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#f5c451" />
-            <stop offset="100%" stopColor="#e879f9" />
-          </linearGradient>
-          <linearGradient id="g-low-prof" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#ff7a7a" />
-            <stop offset="100%" stopColor="#e879f9" />
-          </linearGradient>
-        </defs>
-        <circle cx="60" cy="60" r={r} className="prof-gauge-track" />
-        <circle
-          cx="60"
-          cy="60"
-          r={r}
-          className="prof-gauge-arc"
-          stroke={safe >= 60 ? "url(#g-good-prof)" : safe >= 30 ? "url(#g-mid-prof)" : "url(#g-low-prof)"}
-          strokeDasharray={C}
-          strokeDashoffset={offset}
-          transform="rotate(-90 60 60)"
-        />
-      </svg>
-      <div className="prof-gauge-inner">
-        <div className="prof-gauge-num">{shown}<span>/100</span></div>
-        <div className="prof-gauge-band" style={{ color: band.text }}>{band.label}</div>
+    <div className="prof-roadmap">
+      <div className="prof-roadmap-title">Career Progression</div>
+      <div className="prof-roadmap-stages">
+        {stages.map((stage, i) => (
+          <div key={i} className="prof-stage">
+            <div className="prof-stage-circle">{stage.icon}</div>
+            <div className="prof-stage-label">{stage.label}</div>
+            <div className="prof-stage-skills">{stage.skills} skills</div>
+            {i < stages.length - 1 && <div className="prof-stage-arrow">{Ic.chevron(12)}</div>}
+          </div>
+        ))}
+      </div>
+      <div className="prof-roadmap-timeline">
+        <div className="prof-timeline-line" />
       </div>
     </div>
   );
 }
 
-// Stat
-function Stat({ value, label, color }) {
-  const n = useCountUp(Number(value) || 0, 900);
+// ─────────────────────────────────────────────
+// INTERVIEW PREP COMPONENT
+// ─────────────────────────────────────────────
+function InterviewPrep({ targetRole, skills, gapResult }) {
+  const [questions, setQuestions] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const generateQuestions = async () => {
+    if (!targetRole || !skills.length) return;
+    setLoading(true);
+    try {
+      const response = await axios.post(GAP_ENDPOINT, {
+        user_skills: skills,
+        target_role: targetRole,
+        visa_only: false,
+        interview_mode: true,
+      });
+      setQuestions(response.data?.interview_questions || []);
+    } catch (err) {
+      console.error("Failed to generate interview questions:", err);
+    }
+    setLoading(false);
+  };
+
   return (
-    <div className="prof-stat">
-      <div className="prof-stat-val" style={{ color }}>{n}</div>
-      <div className="prof-stat-label">{label}</div>
+    <div className="prof-interview">
+      <div className="prof-interview-header">
+        <div>
+          <div className="prof-interview-title">Interview Preparation</div>
+          <div className="prof-interview-sub">Practice questions for {targetRole}</div>
+        </div>
+        <button className="prof-primary" onClick={generateQuestions} disabled={loading || !targetRole}>
+          {loading ? "Generating…" : "Generate Questions"}
+        </button>
+      </div>
+      {questions.length > 0 && (
+        <div className="prof-questions">
+          {questions.map((q, i) => (
+            <div key={i} className="prof-question-card">
+              <div className="prof-question-num">Q{i + 1}</div>
+              <div className="prof-question-text">{q}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {!questions.length && !loading && (
+        <div className="prof-hint">Generate questions to start practicing</div>
+      )}
     </div>
   );
 }
 
-// Main Component
+// ─────────────────────────────────────────────
+// MAIN PROFILE COMPONENT
+// ─────────────────────────────────────────────
 export default function Profile() {
   const { currentUser, token } = useAuth();
+
+  // Navigation state
+  const [activeTab, setActiveTab] = useState("overview");
+
+  // Profile state
+  const [visaStatus, setVisaStatus] = useState("student");
+  const [targetRole, setTargetRole] = useState("");
+  const [editingRole, setEditingRole] = useState(false);
 
   // CV state
   const [cvFile, setCvFile] = useState(null);
@@ -296,19 +406,15 @@ export default function Profile() {
   const [cvSkills, setCvSkills] = useState([]);
   const [cvUploaded, setCvUploaded] = useState(false);
 
-  // Skills
+  // Skills state
   const [allSkills, setAllSkills] = useState([]);
   const [manualSkill, setManualSkill] = useState("");
 
-  // Gap analysis
-  const [targetRole, setTargetRole] = useState("");
-  const [roleError, setRoleError] = useState(false);
+  // Gap analysis state
   const [gapLoading, setGapLoading] = useState(false);
   const [gapResult, setGapResult] = useState(null);
-  const [gapError, setGapError] = useState(false);
 
-  // UI
-  const [openStep, setOpenStep] = useState(1);
+  // UI state
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
 
@@ -337,14 +443,13 @@ export default function Profile() {
       const fd = new FormData();
       fd.append("cv", cvFile);
       const res = await axios.post(CV_ENDPOINT, fd, {
-        "headers": { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" },
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" },
       });
       const found = res.data?.skills_found || [];
       setCvSkills(found);
       setAllSkills((prev) => Array.from(new Set([...found, ...prev])));
       setCvUploaded(true);
       flash("success", `Found ${found.length} skill${found.length === 1 ? "" : "s"}`);
-      setOpenStep(2);
     } catch (err) {
       flash("error", err.response?.data?.message || "Upload failed");
     }
@@ -357,6 +462,7 @@ export default function Profile() {
     if (!s) return;
     if (!allSkills.some((x) => x.toLowerCase() === s.toLowerCase())) {
       setAllSkills((prev) => [...prev, s]);
+      flash("success", "Skill added");
     }
     setManualSkill("");
   };
@@ -367,7 +473,6 @@ export default function Profile() {
   // Analysis
   const analyseGap = async () => {
     if (!targetRole.trim()) {
-      setRoleError(true);
       flash("error", "Enter target role");
       return;
     }
@@ -376,7 +481,6 @@ export default function Profile() {
       return;
     }
     setGapLoading(true);
-    setGapResult(null);
     try {
       const res = await axios.post(GAP_ENDPOINT, {
         user_skills: allSkills,
@@ -384,190 +488,206 @@ export default function Profile() {
         visa_only: false,
       });
       setGapResult(res.data);
-    } catch {
-      setGapError(true);
+      flash("success", "Analysis complete!");
+    } catch (err) {
+      flash("error", "Analysis failed");
     }
     setGapLoading(false);
   };
 
-  const step1done = cvUploaded;
-  const step2done = allSkills.length > 0;
-  const step3done = !!gapResult && !gapResult?.error;
+  const tabs = [
+    { id: "overview", label: "Overview", icon: Ic.target },
+    { id: "skills", label: "Skills", icon: Ic.sparkle },
+    { id: "roadmap", label: "Roadmap", icon: Ic.map },
+    { id: "insights", label: "Market", icon: Ic.briefcase },
+    { id: "interview", label: "Interview", icon: Ic.mic },
+  ];
 
   return (
     <div className="prof">
       <style>{CSS}</style>
       <Toast toast={toast} />
 
+      {/* HEADER */}
       <header className="prof-header">
-        <div className="prof-header-left">
-          <div className="prof-eyebrow">Profile</div>
-          <h1 className="prof-title">{currentUser?.name || "Your profile"}</h1>
-        </div>
-        <div className="prof-header-right">
-          <div className="prof-progress">
-            <div className="prof-progress-val">{[step1done, step2done, step3done].filter(Boolean).length}/3</div>
+        <div className="prof-header-content">
+          <div className="prof-avatar-lg">{initials(currentUser?.name)}</div>
+          <div className="prof-header-info">
+            <h1 className="prof-name">{currentUser?.name || "Your Profile"}</h1>
+            <div className="prof-meta">
+              <span className="prof-visa">{visaStatus === "student" ? "Tier 4 Student" : "Graduate Route"}</span>
+              <span className="prof-separator">•</span>
+              <span className="prof-role-display">
+                {editingRole ? (
+                  <input
+                    type="text"
+                    value={targetRole}
+                    onChange={(e) => setTargetRole(e.target.value)}
+                    onBlur={() => setEditingRole(false)}
+                    onKeyDown={(e) => e.key === "Enter" && setEditingRole(false)}
+                    autoFocus
+                    className="prof-role-input"
+                  />
+                ) : (
+                  <span onClick={() => setEditingRole(true)} className="prof-role-clickable">
+                    {targetRole || "Set target role"}
+                  </span>
+                )}
+              </span>
+            </div>
           </div>
         </div>
       </header>
 
-      <div className="prof-layout">
-        {/* LEFT PANEL */}
-        <div className="prof-left">
-          {/* Step 1: Upload CV */}
-          <div className="prof-step-card">
-            <StepHeader
-              n={1}
-              done={step1done}
-              title="Upload your CV"
-              sub={step1done ? `${cvSkills.length} skills found` : "Extract your skills"}
-              open={openStep === 1}
-              onToggle={() => setOpenStep((p) => (p === 1 ? null : 1))}
-            />
-            {openStep === 1 && (
-              <div className="prof-step-body">
-                <Dropzone file={cvFile} loading={cvLoading} uploaded={cvUploaded} onPick={pickFile} onClear={() => setCvFile(null)} onUpload={uploadCV} />
+      {/* TABS */}
+      <nav className="prof-tabs">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            className={`prof-tab ${activeTab === tab.id ? "is-active" : ""}`}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            <span className="prof-tab-icon">{tab.icon(16)}</span>
+            {tab.label}
+          </button>
+        ))}
+      </nav>
+
+      {/* CONTENT */}
+      <div className="prof-content">
+        {/* OVERVIEW */}
+        {activeTab === "overview" && (
+          <div className="prof-panel">
+            <div className="prof-panel-title">Profile Overview</div>
+            <div className="prof-overview-grid">
+              <div className="prof-overview-card">
+                <div className="prof-card-label">Current Skills</div>
+                <div className="prof-card-value">{allSkills.length}</div>
+                <div className="prof-card-sub">in your profile</div>
               </div>
+              {gapResult && (
+                <>
+                  <div className="prof-overview-card">
+                    <div className="prof-card-label">Market Readiness</div>
+                    <div className="prof-card-value">{gapResult.readiness_score}%</div>
+                    <div className="prof-card-sub">{scoreBand(gapResult.readiness_score).label}</div>
+                  </div>
+                  <div className="prof-overview-card">
+                    <div className="prof-card-label">Skills Match</div>
+                    <div className="prof-card-value">{(gapResult.matching_skills || []).length}</div>
+                    <div className="prof-card-sub">of required skills</div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* SKILLS */}
+        {activeTab === "skills" && (
+          <div className="prof-panel">
+            <div className="prof-panel-title">Skill Assessment</div>
+            <Dropzone
+              file={cvFile}
+              loading={cvLoading}
+              uploaded={cvUploaded}
+              onPick={pickFile}
+              onClear={() => setCvFile(null)}
+              onUpload={uploadCV}
+            />
+            <div className="prof-skills-section">
+              <div className="prof-skill-add">
+                <input
+                  className="prof-input"
+                  value={manualSkill}
+                  onChange={(e) => setManualSkill(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addSkill()}
+                  placeholder="Add skill manually…"
+                />
+                <button className="prof-add-btn" onClick={addSkill}>{Ic.plus(15)}</button>
+              </div>
+              {allSkills.length > 0 ? (
+                <div className="prof-skills">
+                  {allSkills.map((skill) => (
+                    <span key={skill} className={`prof-chip ${isManual(skill) ? "is-manual" : ""}`}>
+                      {skill}
+                      <button className="prof-chip-x" onClick={() => removeSkill(skill)}>{Ic.x(10)}</button>
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="prof-hint">Upload CV or add skills to get started</p>
+              )}
+            </div>
+            {allSkills.length > 0 && !gapResult && (
+              <button className="prof-primary prof-primary--block" onClick={analyseGap} disabled={gapLoading}>
+                {gapLoading ? "Analysing…" : "Analyse Market Readiness"}
+              </button>
             )}
           </div>
+        )}
 
-          {/* Step 2: Skills */}
-          <div className="prof-step-card">
-            <StepHeader
-              n={2}
-              done={step2done}
-              title="Your skills"
-              sub={allSkills.length > 0 ? `${allSkills.length} in pool` : "Add your skills"}
-              open={openStep === 2}
-              onToggle={() => setOpenStep((p) => (p === 2 ? null : 2))}
+        {/* ROADMAP */}
+        {activeTab === "roadmap" && (
+          <div className="prof-panel">
+            <CareerRoadmap
+              currentRole={currentUser?.name || "Your Profile"}
+              targetRole={targetRole}
+              currentSkills={allSkills}
+              gapResult={gapResult}
             />
-            {openStep === 2 && (
-              <div className="prof-step-body">
-                <div className="prof-skill-add">
-                  <input
-                    className="prof-input"
-                    value={manualSkill}
-                    onChange={(e) => setManualSkill(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && addSkill()}
-                    placeholder="e.g. React, Python, Design…"
-                  />
-                  <button className="prof-add-btn" onClick={addSkill}>{Ic.plus(15)}</button>
+          </div>
+        )}
+
+        {/* MARKET INSIGHTS */}
+        {activeTab === "insights" && (
+          <div className="prof-panel">
+            <div className="prof-panel-title">Market Insights</div>
+            {gapResult ? (
+              <div className="prof-insights">
+                <div className="prof-insight-card">
+                  <div className="prof-insight-label">Jobs in Market</div>
+                  <div className="prof-insight-value">{gapResult.jobs_analysed || 0}</div>
+                  <div className="prof-insight-sub">for {targetRole}</div>
                 </div>
-                {allSkills.length > 0 ? (
-                  <div className="prof-skills">
-                    {allSkills.map((skill) => (
-                      <span key={skill} className={`prof-chip ${isManual(skill) ? "is-manual" : ""}`}>
-                        {skill}
-                        <button className="prof-chip-x" onClick={() => removeSkill(skill)}>{Ic.x(10)}</button>
-                      </span>
-                    ))}
+                <div className="prof-insight-card">
+                  <div className="prof-insight-label">Visa Sponsoring</div>
+                  <div className="prof-insight-value">{gapResult.visa_sponsors_found || 0}</div>
+                  <div className="prof-insight-sub">companies hiring</div>
+                </div>
+                {gapResult.matching_skills && gapResult.matching_skills.length > 0 && (
+                  <div className="prof-insight-block">
+                    <div className="prof-insight-title">Your Strengths</div>
+                    <div className="prof-tags">
+                      {gapResult.matching_skills.map((s) => (
+                        <span key={s} className="prof-tag prof-tag--good">{Ic.check(11)} {s}</span>
+                      ))}
+                    </div>
                   </div>
-                ) : (
-                  <p className="prof-hint">Upload CV or type to add</p>
+                )}
+                {gapResult.missing_required && gapResult.missing_required.length > 0 && (
+                  <div className="prof-insight-block">
+                    <div className="prof-insight-title">Critical Gaps</div>
+                    <div className="prof-gaps">
+                      {gapResult.missing_required.map((s) => (
+                        <div key={s} className="prof-gap">{s}</div>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
+            ) : (
+              <p className="prof-hint">Run skill analysis to see market insights</p>
             )}
           </div>
+        )}
 
-          {/* Step 3: Analyse */}
-          <div className="prof-step-card">
-            <StepHeader
-              n={3}
-              done={step3done}
-              title="Market readiness"
-              sub={step3done ? `Analysis complete` : "Run gap analysis"}
-              open={openStep === 3}
-              onToggle={() => setOpenStep((p) => (p === 3 ? null : 3))}
-            />
-            {openStep === 3 && (
-              <div className="prof-step-body">
-                <input
-                  className={`prof-input prof-input--block ${roleError ? "is-err" : ""}`}
-                  value={targetRole}
-                  onChange={(e) => {
-                    setTargetRole(e.target.value);
-                    setRoleError(false);
-                  }}
-                  placeholder="e.g. Software Engineer, Data Scientist…"
-                />
-                {roleError && <p className="prof-err-msg">Enter target role</p>}
-                <button className="prof-cta" onClick={analyseGap} disabled={gapLoading}>
-                  {gapLoading ? <span className="prof-btn-spin"><span className="prof-spinner" /> Analysing…</span> : <>Analyse skill gap</>}
-                </button>
-              </div>
-            )}
+        {/* INTERVIEW PREP */}
+        {activeTab === "interview" && (
+          <div className="prof-panel">
+            <InterviewPrep targetRole={targetRole} skills={allSkills} gapResult={gapResult} />
           </div>
-        </div>
-
-        {/* RIGHT PANEL */}
-        <div className="prof-right">
-          {gapLoading && (
-            <div className="prof-right-inner">
-              <div className="prof-skel" style={{ width: 120, height: 120, borderRadius: "50%", margin: "0 auto 20px" }} />
-              <div className="prof-skel" style={{ height: 16, width: "60%", margin: "0 auto 10px" }} />
-              <div className="prof-skel" style={{ height: 12, width: "80%", margin: "0 auto" }} />
-            </div>
-          )}
-
-          {!gapLoading && gapError && (
-            <div className="prof-right-inner prof-error-state">
-              <div className="prof-error-ico">{Ic.alert(24)}</div>
-              <div className="prof-error-title">Analysis failed</div>
-              <p className="prof-error-sub">Check your connection and try again</p>
-              <button className="prof-primary" onClick={analyseGap}>Retry</button>
-            </div>
-          )}
-
-          {!gapLoading && gapResult && !gapResult.error && (
-            <div className="prof-right-inner">
-              <div className="prof-results-hero">
-                <RadialGauge score={gapResult.readiness_score} />
-                <div className="prof-results-text">
-                  <div className="prof-results-role">{gapResult.target_role}</div>
-                  <div className="prof-results-label">Market Readiness</div>
-                  {gapResult.summary && <p className="prof-results-summary">{gapResult.summary}</p>}
-                </div>
-              </div>
-
-              <div className="prof-stats">
-                <Stat value={gapResult.jobs_analysed} label="Jobs in market" color="#9b6ef3" />
-                <Stat value={gapResult.visa_sponsors_found} label="Sponsor roles" color="#00d4aa" />
-                <Stat value={(gapResult.matching_skills || []).length} label="Skills match" color="#e879f9" />
-              </div>
-
-              {(gapResult.matching_skills || []).length > 0 && (
-                <div className="prof-block">
-                  <div className="prof-block-title">Your strengths</div>
-                  <div className="prof-tags">
-                    {gapResult.matching_skills.map((s) => (
-                      <span key={s} className="prof-tag prof-tag--good">{Ic.check(11)} {s}</span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {(gapResult.missing_required || []).length > 0 && (
-                <div className="prof-block">
-                  <div className="prof-block-title">Critical gaps</div>
-                  <div className="prof-gaps">
-                    {gapResult.missing_required.map((s) => (
-                      <div key={s} className="prof-gap">{s}</div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {!gapLoading && !gapResult && !gapError && (
-            <div className="prof-right-inner prof-identity">
-              <div className="prof-avatar">{initials(currentUser?.name)}</div>
-              <div className="prof-identity-name">{currentUser?.name || "Your profile"}</div>
-              <div className="prof-identity-hint">Complete the steps to unlock your analysis</div>
-              <div className="prof-tip">{Ic.sparkle(13)} <span>Upload your CV to extract skills and see market readiness</span></div>
-            </div>
-          )}
-        </div>
+        )}
       </div>
     </div>
   );
@@ -594,7 +714,8 @@ const CSS = `
   --tx3: #4e4e66;
 
   width: 100%;
-  padding: clamp(1.5rem, 4vw, 2.5rem) clamp(1rem, 3vw, 2rem) 4rem;
+  min-height: 100vh;
+  padding: clamp(2rem, 5vw, 3rem) clamp(1rem, 3vw, 2rem);
   box-sizing: border-box;
   color: var(--tx);
   font-family: 'Inter', sans-serif;
@@ -603,94 +724,546 @@ const CSS = `
 
 .prof * { box-sizing: border-box; }
 
+/* HEADER */
 .prof-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  padding-bottom: clamp(1.25rem, 3vw, 2rem);
-  margin-bottom: clamp(1.25rem, 3vw, 2rem);
+  padding-bottom: 2.5rem;
+  margin-bottom: 2.5rem;
   border-bottom: 1px solid var(--bd);
 }
 
-.prof-header-left { flex: 1; }
-.prof-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--p2); margin-bottom: 6px; }
-.prof-title { margin: 0; font-size: clamp(20px, 3vw, 28px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; }
-
-.prof-header-right { flex-shrink: 0; }
-.prof-progress { width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; background: var(--s2); border: 1px solid var(--bd); border-radius: 50%; font-size: 11px; font-weight: 700; }
-.prof-progress-val { color: var(--p2); }
-
-.prof-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: clamp(12px, 2vw, 20px);
-  align-items: start;
-}
-
-.prof-left { display: flex; flex-direction: column; gap: 10px; position: sticky; top: clamp(1rem, 2vw, 1.5rem); }
-.prof-right { background: var(--s1); border: 1px solid var(--bd); border-radius: 20px; overflow: hidden; position: sticky; top: clamp(1rem, 2vw, 1.5rem); min-height: 420px; }
-.prof-right-inner { padding: clamp(20px, 3vw, 28px); }
-
-.prof-step-card { background: var(--s1); border: 1px solid var(--bd); border-radius: 18px; overflow: hidden; transition: border-color 0.2s; }
-.prof-step-card:has(.is-open) { border-color: var(--bd2); }
-
-.prof-step-hd {
-  width: 100%;
+.prof-header-content {
   display: flex;
   align-items: center;
-  gap: 13px;
-  padding: 16px 18px;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  text-align: left;
-  font-family: inherit;
-  transition: background 0.15s;
+  gap: 20px;
 }
 
-.prof-step-hd:hover { background: rgba(255,255,255,0.025); }
-
-.prof-step-node {
-  width: 30px;
-  height: 30px;
+.prof-avatar-lg {
+  width: 70px;
+  height: 70px;
   border-radius: 50%;
-  flex-shrink: 0;
+  background: linear-gradient(135deg, var(--p1), var(--p2));
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--tx2);
-  background: var(--s2);
-  border: 1px solid var(--bd);
-  transition: all 0.25s;
-}
-
-.prof-step-node.is-done {
-  background: linear-gradient(135deg, var(--p1), var(--p2));
+  font-size: 24px;
+  font-weight: 800;
   color: #fff;
-  border-color: transparent;
-  box-shadow: 0 0 14px rgba(124,111,239,0.4);
+  box-shadow: 0 8px 24px rgba(124,111,239,0.3);
 }
 
-.prof-step-label { flex: 1; min-width: 0; }
-.prof-step-title { font-size: 13.5px; font-weight: 600; color: var(--tx); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.prof-step-sub { font-size: 11.5px; color: var(--tx3); margin-top: 2px; }
+.prof-header-info { flex: 1; }
+.prof-name { margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -0.02em; }
 
-.prof-step-chevron { flex-shrink: 0; color: var(--tx3); transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
-.prof-step-chevron.is-open { transform: rotate(180deg); color: var(--p2); }
-
-.prof-step-body {
-  padding: 0 18px 18px;
-  animation: prof-slide 0.2s ease;
+.prof-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--tx2);
 }
 
-@keyframes prof-slide {
-  from { opacity: 0; transform: translateY(-6px); }
+.prof-visa {
+  background: rgba(0,212,170,0.1);
+  color: var(--tl);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-weight: 600;
+}
+
+.prof-separator { opacity: 0.3; }
+
+.prof-role-clickable {
+  cursor: pointer;
+  color: var(--p2);
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.prof-role-clickable:hover {
+  background: rgba(124,111,239,0.2);
+}
+
+.prof-role-input {
+  background: rgba(124,111,239,0.1);
+  border: 1px solid var(--bd2);
+  border-radius: 6px;
+  color: var(--tx);
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.prof-role-input:focus {
+  outline: none;
+  border-color: var(--p2);
+  box-shadow: 0 0 8px rgba(124,111,239,0.3);
+}
+
+/* TABS */
+.prof-tabs {
+  display: flex;
+  gap: 8px;
+  padding-bottom: 2rem;
+  border-bottom: 1px solid var(--bd);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.prof-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--tx2);
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 8px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.prof-tab:hover {
+  color: var(--tx);
+  background: rgba(124,111,239,0.1);
+}
+
+.prof-tab.is-active {
+  color: var(--p2);
+  background: rgba(124,111,239,0.15);
+  border-bottom: 2px solid var(--p2);
+}
+
+.prof-tab-icon { display: flex; }
+
+/* CONTENT */
+.prof-content {
+  max-width: 1200px;
+  animation: prof-fade 0.3s ease;
+}
+
+@keyframes prof-fade {
+  from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
+.prof-panel {
+  background: var(--s1);
+  border: 1px solid var(--bd);
+  border-radius: 20px;
+  padding: clamp(24px, 4vw, 36px);
+  animation: prof-slide 0.3s cubic-bezier(0.2,0.8,0.2,1);
+}
+
+@keyframes prof-slide {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.prof-panel-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 24px;
+  letter-spacing: -0.01em;
+}
+
+/* OVERVIEW GRID */
+.prof-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.prof-overview-card {
+  background: linear-gradient(135deg, rgba(124,111,239,0.1), rgba(232,121,249,0.05));
+  border: 1px solid var(--bd);
+  border-radius: 16px;
+  padding: 20px;
+  text-align: center;
+  transition: all 0.3s cubic-bezier(0.2,0.8,0.2,1);
+}
+
+.prof-overview-card:hover {
+  border-color: var(--bd2);
+  transform: translateY(-2px);
+}
+
+.prof-card-label { font-size: 12px; font-weight: 600; color: var(--tx2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+.prof-card-value { font-size: 32px; font-weight: 800; background: linear-gradient(135deg, var(--p1), var(--p2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 4px; }
+.prof-card-sub { font-size: 12px; color: var(--tx3); }
+
+/* SKILLS SECTION */
+.prof-skills-section {
+  margin-top: 24px;
+}
+
+.prof-skill-add {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.prof-input {
+  flex: 1;
+  background: var(--s2);
+  border: 1px solid var(--bd);
+  border-radius: 12px;
+  padding: 12px 16px;
+  color: var(--tx);
+  font-family: inherit;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.prof-input:focus {
+  outline: none;
+  border-color: var(--bd2);
+  box-shadow: 0 0 12px rgba(124,111,239,0.2);
+  background: var(--s2);
+}
+
+.prof-add-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--p1), var(--p2));
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.prof-add-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(124,111,239,0.4);
+}
+
+.prof-skills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.prof-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(124,111,239,0.2);
+  border: 1px solid var(--bd2);
+  border-radius: 20px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tl);
+  animation: prof-pop 0.3s cubic-bezier(0.2,0.8,0.2,1);
+}
+
+@keyframes prof-pop {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.prof-chip.is-manual {
+  border-color: rgba(232,121,249,0.3);
+  color: var(--mg);
+}
+
+.prof-chip-x {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.prof-chip-x:hover {
+  opacity: 1;
+}
+
+.prof-hint {
+  text-align: center;
+  color: var(--tx3);
+  font-size: 13px;
+  padding: 20px;
+}
+
+.prof-primary {
+  background: linear-gradient(135deg, var(--p1), var(--p2));
+  border: none;
+  color: #fff;
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 14px;
+}
+
+.prof-primary:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(124,111,239,0.3);
+}
+
+.prof-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.prof-primary--block {
+  width: 100%;
+  margin-top: 20px;
+}
+
+.prof-btn-spin {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.prof-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ROADMAP */
+.prof-roadmap {
+  background: rgba(124,111,239,0.05);
+  border: 1px solid var(--bd);
+  border-radius: 16px;
+  padding: 32px 24px;
+  margin-top: 16px;
+}
+
+.prof-roadmap-title {
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 28px;
+  text-align: center;
+}
+
+.prof-roadmap-stages {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 16px;
+  position: relative;
+}
+
+.prof-stage {
+  text-align: center;
+  position: relative;
+}
+
+.prof-stage-circle {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(124,111,239,0.2), rgba(232,121,249,0.2));
+  border: 2px solid var(--bd2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  margin: 0 auto 12px;
+  transition: all 0.3s;
+}
+
+.prof-stage-circle:hover {
+  border-color: var(--p2);
+  transform: scale(1.1);
+}
+
+.prof-stage-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--tx);
+  margin-bottom: 4px;
+}
+
+.prof-stage-skills {
+  font-size: 11px;
+  color: var(--tx2);
+}
+
+.prof-stage-arrow {
+  position: absolute;
+  right: -12px;
+  top: 8px;
+  color: var(--p2);
+  opacity: 0.5;
+}
+
+.prof-roadmap-timeline {
+  position: relative;
+  height: 2px;
+  margin-top: 20px;
+}
+
+.prof-timeline-line {
+  height: 2px;
+  background: linear-gradient(90deg, var(--p1), var(--p2), var(--mg));
+  border-radius: 1px;
+}
+
+/* INSIGHTS */
+.prof-insights {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.prof-insight-card {
+  background: var(--s2);
+  border: 1px solid var(--bd);
+  border-radius: 14px;
+  padding: 18px;
+  text-align: center;
+}
+
+.prof-insight-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--tx2);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+
+.prof-insight-value {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--p2);
+  margin-bottom: 4px;
+}
+
+.prof-insight-sub {
+  font-size: 11px;
+  color: var(--tx3);
+}
+
+.prof-insight-block {
+  grid-column: 1 / -1;
+  margin-top: 16px;
+}
+
+.prof-insight-title {
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.prof-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.prof-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.prof-tag--good {
+  background: rgba(0,212,170,0.2);
+  color: var(--tl);
+}
+
+.prof-gaps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.prof-gap {
+  background: rgba(255,107,107,0.15);
+  color: var(--red);
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* INTERVIEW */
+.prof-interview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.prof-interview-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.prof-interview-sub {
+  font-size: 12px;
+  color: var(--tx2);
+  margin-top: 4px;
+}
+
+.prof-questions {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.prof-question-card {
+  background: var(--s2);
+  border: 1px solid var(--bd);
+  border-radius: 14px;
+  padding: 16px;
+  transition: all 0.3s;
+}
+
+.prof-question-card:hover {
+  border-color: var(--bd2);
+  transform: translateY(-2px);
+}
+
+.prof-question-num {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--p2);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.prof-question-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--tx);
+}
+
+/* DROPZONE */
 .prof-drop {
   border: 1.5px dashed rgba(124,111,239,0.2);
   border-radius: 14px;
@@ -701,344 +1274,242 @@ const CSS = `
   transition: all 0.2s, transform 0.18s;
 }
 
-.prof-drop:hover { border-color: var(--bd2); background: rgba(124,111,239,0.04); }
-.prof-drop.is-drag { border-color: var(--p1); background: rgba(124,111,239,0.08); transform: scale(1.01); }
-
-.prof-drop-ic { width: 48px; height: 48px; margin: 0 auto 12px; border-radius: 14px; display: flex; align-items: center; justify-content: center; color: var(--p2); background: rgba(124,111,239,0.1); border: 1px solid rgba(124,111,239,0.2); }
-.prof-drop-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; color: var(--tx); }
-.prof-drop-title span { color: var(--p2); text-decoration: underline; text-underline-offset: 2px; }
-.prof-drop-hint { font-size: 11.5px; color: var(--tx3); }
-
-.prof-file { display: flex; align-items: center; gap: 11px; background: var(--s2); border: 1px solid var(--bd); border-radius: 12px; padding: 11px 14px; }
-.prof-file--done { border-color: rgba(0,212,170,0.2); background: rgba(0,212,170,0.04); }
-.prof-file-ic { width: 36px; height: 36px; flex-shrink: 0; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--p2); background: rgba(124,111,239,0.1); }
-.prof-file-ic--done { color: var(--tl); background: rgba(0,212,170,0.1); }
-.prof-file-name { font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--tx); }
-.prof-file-meta { font-size: 11px; color: var(--tx3); margin-top: 2px; }
-.prof-file-selected { display: flex; flex-direction: column; gap: 10px; }
-
-.prof-input {
-  background: var(--s2);
-  border: 1px solid var(--bd);
-  border-radius: 11px;
-  color: var(--tx);
-  font-size: 13px;
-  padding: 10px 13px;
-  outline: none;
-  transition: border-color 0.18s, box-shadow 0.18s;
-  font-family: inherit;
-  width: 100%;
+.prof-drop:hover {
+  border-color: var(--bd2);
+  background: rgba(124,111,239,0.05);
 }
 
-.prof-input::placeholder { color: var(--tx3); }
-.prof-input:focus { border-color: var(--p1); box-shadow: 0 0 0 3px rgba(124,111,239,0.13); }
-.prof-input.is-err { border-color: rgba(255,107,107,0.5); }
-.prof-input--block { display: block; margin-bottom: 12px; }
-
-.prof-err-msg { font-size: 11.5px; color: var(--red); margin: -6px 0 12px; }
-
-.prof-skill-add { display: flex; gap: 8px; margin-bottom: 13px; }
-.prof-skill-add .prof-input { flex: 1; }
-
-.prof-add-btn {
-  width: 40px;
-  height: 40px;
-  flex-shrink: 0;
-  border: none;
-  background: linear-gradient(135deg, var(--p1), var(--p2));
-  color: #fff;
-  border-radius: 11px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: filter 0.18s, transform 0.12s;
-  font-family: inherit;
+.prof-drop.is-drag {
+  border-color: var(--p2);
+  background: rgba(124,111,239,0.1);
+  transform: scale(1.02);
 }
 
-.prof-add-btn:hover { filter: brightness(1.12); }
-.prof-add-btn:active { transform: scale(0.95); }
-
-.prof-skills { display: flex; flex-wrap: wrap; gap: 6px; max-height: 148px; overflow-y: auto; }
-
-.prof-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 6px 4px 11px;
-  border-radius: 999px;
-  background: rgba(124,111,239,0.12);
-  border: 1px solid rgba(124,111,239,0.22);
-  color: #b0a8ff;
-  font-size: 11.5px;
-  font-weight: 500;
-  text-transform: capitalize;
-  transition: border-color 0.15s;
+.prof-drop-ic {
+  font-size: 32px;
+  margin-bottom: 12px;
+  color: var(--p2);
 }
 
-.prof-chip:hover { border-color: rgba(124,111,239,0.45); }
-.prof-chip.is-manual { background: rgba(232,121,249,0.08); border-color: rgba(232,121,249,0.2); color: #e8a0f9; }
-
-.prof-chip-x {
-  width: 16px;
-  height: 16px;
-  border: none;
-  background: transparent;
-  color: inherit;
-  opacity: 0.5;
-  cursor: pointer;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: opacity 0.15s, background 0.15s;
-  font-family: inherit;
-}
-
-.prof-chip-x:hover { opacity: 1; background: rgba(255,255,255,0.12); }
-
-.prof-hint { font-size: 12px; color: var(--tx3); margin: 0; }
-
-.prof-cta {
-  width: 100%;
-  padding: 14px;
-  border: none;
-  border-radius: 13px;
-  background: linear-gradient(135deg, var(--p1) 0%, var(--p2) 50%, var(--mg) 100%);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 700;
-  font-family: inherit;
-  cursor: pointer;
-  letter-spacing: -0.01em;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 9px;
-  transition: filter 0.2s, transform 0.12s, box-shadow 0.2s;
-  box-shadow: 0 6px 24px rgba(124,111,239,0.3);
-}
-
-.prof-cta:hover:not(:disabled) { filter: brightness(1.08); box-shadow: 0 10px 32px rgba(124,111,239,0.42); }
-.prof-cta:active:not(:disabled) { transform: translateY(1px); }
-.prof-cta:disabled { opacity: 0.6; cursor: not-allowed; }
-
-.prof-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 10px 18px;
-  border: none;
-  border-radius: 11px;
-  background: linear-gradient(135deg, var(--p1), var(--p2));
-  color: #fff;
-  font-size: 12.5px;
+.prof-drop-title {
+  font-size: 15px;
   font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  transition: filter 0.18s, transform 0.12s;
-  white-space: nowrap;
+  margin-bottom: 4px;
 }
 
-.prof-primary:hover:not(:disabled) { filter: brightness(1.12); }
-.prof-primary:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.prof-primary--block { width: 100%; }
-
-.prof-btn-spin { display: inline-flex; align-items: center; gap: 8px; }
-.prof-spinner {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 2px solid rgba(255,255,255,0.3);
-  border-top-color: #fff;
-  animation: prof-spin 0.7s linear infinite;
+.prof-drop-title span {
+  color: var(--p2);
+  font-weight: 700;
 }
 
-@keyframes prof-spin { to { transform: rotate(360deg); } }
-
-.prof-identity {
-  padding: clamp(24px, 3.5vw, 36px) clamp(20px, 3vw, 28px);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-}
-
-.prof-avatar {
-  width: 68px;
-  height: 68px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--p1), var(--mg));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  font-weight: 800;
-  color: #fff;
-  letter-spacing: -0.02em;
-  margin-bottom: 16px;
-}
-
-.prof-identity-name { font-size: 17px; font-weight: 700; letter-spacing: -0.02em; color: var(--tx); margin-bottom: 8px; }
-.prof-identity-hint { font-size: 12px; color: var(--tx2); margin-bottom: 22px; }
-
-.prof-tip {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  background: rgba(124,111,239,0.08);
-  border: 1px solid rgba(124,111,239,0.18);
-  border-radius: 12px;
-  padding: 12px 14px;
-  margin-bottom: 20px;
-  font-size: 12.5px;
-  color: var(--tx2);
-  line-height: 1.5;
-  text-align: left;
-}
-
-.prof-tip svg { flex-shrink: 0; color: var(--p2); margin-top: 1px; }
-
-.prof-results-hero {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  margin-bottom: 20px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid var(--bd);
-}
-
-.prof-results-text { flex: 1; min-width: 0; }
-.prof-results-role { font-size: 17px; font-weight: 800; letter-spacing: -0.025em; text-transform: capitalize; color: var(--tx); }
-.prof-results-label { font-size: 10px; font-weight: 700; color: var(--tx3); text-transform: uppercase; letter-spacing: 0.08em; margin: 3px 0 9px; }
-.prof-results-summary { margin: 0; font-size: 12px; line-height: 1.65; color: var(--tx2); }
-
-.prof-gauge { position: relative; width: 110px; height: 110px; flex-shrink: 0; }
-.prof-gauge-svg { width: 110px; height: 110px; }
-.prof-gauge-track { fill: none; stroke: rgba(255,255,255,0.05); stroke-width: 8; }
-.prof-gauge-arc { fill: none; stroke-width: 8; stroke-linecap: round; }
-.prof-gauge-inner {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-
-.prof-gauge-num { font-size: 26px; font-weight: 800; letter-spacing: -0.04em; color: var(--tx); line-height: 1; }
-.prof-gauge-num span { font-size: 11px; font-weight: 500; color: var(--tx3); }
-.prof-gauge-band { font-size: 9.5px; font-weight: 700; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.07em; }
-
-.prof-stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-bottom: 20px;
-}
-
-.prof-stat {
-  background: var(--s2);
-  border: 1px solid var(--bd);
-  border-radius: 12px;
-  padding: 13px 10px;
-  text-align: center;
-  transition: border-color 0.2s;
-}
-
-.prof-stat:hover { border-color: var(--bd2); }
-.prof-stat-val { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; }
-.prof-stat-label { font-size: 10px; color: var(--tx3); margin-top: 4px; font-weight: 500; }
-
-.prof-block { margin-bottom: 18px; }
-.prof-block:last-child { margin-bottom: 0; }
-.prof-block-title { font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--tx2); margin-bottom: 10px; }
-
-.prof-tags { display: flex; flex-wrap: wrap; gap: 6px; }
-.prof-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 11px;
-  border-radius: 999px;
-  font-size: 11.5px;
-  font-weight: 500;
-  text-transform: capitalize;
-}
-
-.prof-tag--good { background: rgba(0,212,170,0.1); color: var(--tl); border: 1px solid rgba(0,212,170,0.22); }
-
-.prof-gaps { display: flex; flex-direction: column; gap: 8px; }
-.prof-gap {
-  background: var(--s2);
-  border: 1px solid rgba(255,107,107,0.2);
-  border-radius: 10px;
-  padding: 10px 12px;
+.prof-drop-hint {
   font-size: 12px;
   color: var(--tx2);
 }
 
-.prof-skel {
-  background: linear-gradient(90deg, var(--s1) 25%, var(--s3) 50%, var(--s1) 75%);
-  background-size: 200% 100%;
-  animation: prof-shim 1.5s ease-in-out infinite;
-  border-radius: 8px;
+.prof-file-selected {
+  margin-bottom: 16px;
 }
 
-@keyframes prof-shim {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-.prof-error-state {
-  padding: clamp(24px, 4vw, 40px) clamp(20px, 3vw, 28px);
+.prof-file {
+  background: var(--s2);
+  border: 1px solid var(--bd2);
+  border-radius: 12px;
+  padding: 12px 16px;
   display: flex;
-  flex-direction: column;
   align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.prof-file-ic {
+  color: var(--p2);
+  flex-shrink: 0;
+}
+
+.prof-file-ic--done {
+  color: var(--tl);
+}
+
+.prof-file-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.prof-file-name {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.prof-file-meta {
+  font-size: 11px;
+  color: var(--tx2);
+  margin-top: 2px;
+}
+
+.prof-file--done {
+  background: rgba(0,212,170,0.08);
+  border: 1px solid rgba(0,212,170,0.2);
+  border-radius: 12px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.prof-icon-btn {
+  background: none;
+  border: none;
+  color: var(--tx2);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  transition: color 0.2s;
+}
+
+.prof-icon-btn:hover {
+  color: var(--tx);
+}
+
+.prof-link-btn {
+  background: none;
+  border: none;
+  color: var(--p2);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: background 0.2s;
+}
+
+.prof-link-btn:hover {
+  background: rgba(124,111,239,0.2);
+}
+
+/* TOAST */
+.prof-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  backdrop-filter: blur(8px);
+  animation: prof-toast-in 0.3s cubic-bezier(0.2,0.8,0.2,1);
+  z-index: 1000;
+}
+
+.prof-toast--success {
+  background: rgba(0,212,170,0.2);
+  border: 1px solid rgba(0,212,170,0.3);
+  color: var(--tl);
+}
+
+.prof-toast--error {
+  background: rgba(255,107,107,0.2);
+  border: 1px solid rgba(255,107,107,0.3);
+  color: var(--red);
+}
+
+@keyframes prof-toast-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* GAUGE */
+.prof-gauge {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  margin: 0 auto;
+}
+
+.prof-gauge-svg {
+  width: 100%;
+  height: 100%;
+}
+
+.prof-gauge-track {
+  fill: none;
+  stroke: var(--s2);
+  stroke-width: 8;
+}
+
+.prof-gauge-arc {
+  fill: none;
+  stroke-width: 8;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1.2s cubic-bezier(0.2,0.8,0.2,1);
+}
+
+.prof-gauge-inner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   text-align: center;
 }
 
-.prof-error-ico { color: var(--red); margin-bottom: 12px; }
-.prof-error-title { font-size: 15px; font-weight: 700; margin: 0 0 8px; color: var(--tx); }
-.prof-error-sub { font-size: 12.5px; color: var(--tx2); line-height: 1.55; margin: 0 0 18px; }
-
-.prof-toast {
-  position: fixed;
-  left: 50%;
-  bottom: 28px;
-  transform: translateX(-50%);
-  z-index: 9000;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 18px;
-  border-radius: 13px;
-  font-size: 13px;
-  font-weight: 500;
-  font-family: inherit;
-  backdrop-filter: blur(16px);
-  animation: prof-rise 0.22s ease;
-  box-shadow: 0 14px 44px rgba(0,0,0,0.5);
-  max-width: min(90vw, 420px);
+.prof-gauge-num {
+  font-size: 32px;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--p1), var(--p2));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
-@keyframes prof-rise {
-  from { opacity: 0; transform: translate(-50%, 10px); }
-  to { opacity: 1; transform: translate(-50%, 0); }
+.prof-gauge-num span {
+  font-size: 14px;
+  opacity: 0.7;
 }
 
-.prof-toast--error { background: rgba(28,10,12,0.92); border: 1px solid rgba(255,107,107,0.3); color: #ffc9c9; }
-.prof-toast--success { background: rgba(8,24,20,0.92); border: 1px solid rgba(0,212,170,0.3); color: #99f5e4; }
-
-@media (prefers-reduced-motion: reduce) {
-  .prof * { animation: none !important; transition: none !important; }
+.prof-gauge-band {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-top: 4px;
 }
 
-@media (max-width: 820px) {
-  .prof-layout { grid-template-columns: 1fr; }
-  .prof-left { position: static; }
-  .prof-right { position: static; }
+/* RESPONSIVE */
+@media (max-width: 768px) {
+  .prof-tabs {
+    gap: 4px;
+  }
+
+  .prof-tab {
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+
+  .prof-tab-icon {
+    display: none;
+  }
+
+  .prof-overview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .prof-roadmap-stages {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .prof-header-content {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .prof-avatar-lg {
+    margin-bottom: 8px;
+  }
 }
 `;
