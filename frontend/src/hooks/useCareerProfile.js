@@ -41,7 +41,19 @@ export function useCareerProfile() {
     axios
       .get(API, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => alive && apply(r.data))
-      .catch(() => alive && setError("Could not load your profile"))
+      .catch((err) => {
+        if (!alive) return;
+        const status = err.response?.status;
+        setError(
+          status === 404
+            ? "The backend is running old code. Restart it (node server.js in backend)."
+            : status === 401
+              ? "Your session expired. Log out and log in again."
+              : !err.response
+                ? `Can't reach the backend at ${import.meta.env.VITE_API_URL}. Is it running?`
+                : "Could not load your profile",
+        );
+      })
       .finally(() => alive && setLoading(false));
     return () => {
       alive = false;
@@ -55,8 +67,8 @@ export function useCareerProfile() {
 
   return {
     profile,
-    loading,
-    error,
+    loading: token ? loading : false,
+    error: token ? error : "You're signed out. Log in again to see your profile.",
     setProfile: apply,
     updateProfile: (body) => call("put", "", body),
     saveSkills: (skills) => call("put", "/skills", { skills }),
