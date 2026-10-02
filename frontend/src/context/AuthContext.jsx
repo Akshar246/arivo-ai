@@ -44,6 +44,11 @@ export function AuthProvider({ children }) {
     setToken(null);
     sessionStorage.removeItem("arivo_token");
     sessionStorage.removeItem("arivo_user");
+    try {
+      localStorage.removeItem("arivo_pf_context");
+    } catch {
+      /* storage unavailable */
+    }
   };
 
   const value = {

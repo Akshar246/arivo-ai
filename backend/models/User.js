@@ -48,6 +48,38 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "Student Visa",
     },
+
+    // Shared career data read and written by Profile, ATS and Jobs
+    careerProfile: {
+      skills: [
+        {
+          _id: false,
+          name: { type: String, required: true, trim: true },
+          source: { type: String, enum: ["cv", "manual", "learned"], default: "manual" },
+          evidence: { type: String, default: "" }, // CV line that mentions the skill
+        },
+      ],
+      cvText: { type: String, default: "" },
+      cvUploadedAt: { type: Date, default: null },
+      gap: { type: mongoose.Schema.Types.Mixed, default: null },
+      gapRole: { type: String, default: "" },
+      gapAt: { type: Date, default: null },
+      plan: [
+        {
+          _id: false,
+          skill: String,
+          done: { type: Boolean, default: false },
+          resource: { type: String, default: "" },
+          url: { type: String, default: "" },
+          time: { type: String, default: "" },
+        },
+      ],
+      ats: {
+        score: { type: Number, default: null },
+        missingKeywords: { type: [String], default: [] },
+        at: { type: Date, default: null },
+      },
+    },
   },
   {
     // timestamps automatically adds createdAt and updatedAt

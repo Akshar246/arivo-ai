@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
+import { useCareerProfile } from "../hooks/useCareerProfile";
 
 const CV_ENDPOINT = `${import.meta.env.VITE_API_URL}/api/cv/upload`;
 const GAP_ENDPOINT = `${import.meta.env.VITE_AI_URL}/skill-gap/analyse`;
@@ -197,19 +198,6 @@ function RadialGauge({ score }) {
 }
 
 // ─────────────────────────────────────────────
-// STAT COMPONENT
-// ─────────────────────────────────────────────
-function Stat({ value, label, color }) {
-  const n = useCountUp(Number(value) || 0, 900);
-  return (
-    <div className="prof-stat">
-      <div className="prof-stat-val" style={{ color }}>{n}</div>
-      <div className="prof-stat-label">{label}</div>
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
 // DROPZONE COMPONENT
 // ─────────────────────────────────────────────
 function Dropzone({ file, loading, uploaded, onPick, onClear, onUpload }) {
@@ -304,117 +292,33 @@ function Dropzone({ file, loading, uploaded, onPick, onClear, onUpload }) {
 }
 
 // ─────────────────────────────────────────────
-// CAREER ROADMAP COMPONENT
+// HELPERS
 // ─────────────────────────────────────────────
-function CareerRoadmap({ currentRole, targetRole, currentSkills, gapResult }) {
-  const stages = [
-    { level: "Current", label: "Your Profile", skills: currentSkills?.length || 0, icon: "🎓" },
-    { level: "Intermediate", label: "Consolidate", skills: Math.ceil((currentSkills?.length || 0) * 1.3), icon: "📈" },
-    { level: "Advanced", label: "Specialize", skills: Math.ceil((currentSkills?.length || 0) * 1.7), icon: "⭐" },
-    { level: "Expert", label: targetRole || "Target Role", skills: Math.ceil((currentSkills?.length || 0) * 2.2), icon: "🚀" },
-  ];
+const hasSkill = (skills, req) => {
+  const r = req.toLowerCase();
+  return skills.some((s) => {
+    const n = s.name.toLowerCase();
+    return n.includes(r) || r.includes(n);
+  });
+};
 
-  return (
-    <div className="prof-roadmap">
-      <div className="prof-roadmap-title">Career Progression</div>
-      <div className="prof-roadmap-stages">
-        {stages.map((stage, i) => (
-          <div key={i} className="prof-stage">
-            <div className="prof-stage-circle">{stage.icon}</div>
-            <div className="prof-stage-label">{stage.label}</div>
-            <div className="prof-stage-skills">{stage.skills} skills</div>
-            {i < stages.length - 1 && <div className="prof-stage-arrow">{Ic.chevron(12)}</div>}
-          </div>
-        ))}
-      </div>
-      <div className="prof-roadmap-timeline">
-        <div className="prof-timeline-line" />
-      </div>
-    </div>
-  );
-}
+const SOURCE_LABEL = { cv: "From CV", manual: "Added by you", learned: "Learned" };
 
 // ─────────────────────────────────────────────
-// INTERVIEW PREP COMPONENT
+// MAIN PROFILE
 // ─────────────────────────────────────────────
-function InterviewPrep({ targetRole, skills, gapResult }) {
-  const [questions, setQuestions] = useState([]);
-  const [loading, setLoading] = useState(false);
-
-  const generateQuestions = async () => {
-    if (!targetRole || !skills.length) return;
-    setLoading(true);
-    try {
-      const response = await axios.post(GAP_ENDPOINT, {
-        user_skills: skills,
-        target_role: targetRole,
-        visa_only: false,
-        interview_mode: true,
-      });
-      setQuestions(response.data?.interview_questions || []);
-    } catch (err) {
-      console.error("Failed to generate interview questions:", err);
-    }
-    setLoading(false);
-  };
-
-  return (
-    <div className="prof-interview">
-      <div className="prof-interview-header">
-        <div>
-          <div className="prof-interview-title">Interview Preparation</div>
-          <div className="prof-interview-sub">Practice questions for {targetRole}</div>
-        </div>
-        <button className="prof-primary" onClick={generateQuestions} disabled={loading || !targetRole}>
-          {loading ? "Generating…" : "Generate Questions"}
-        </button>
-      </div>
-      {questions.length > 0 && (
-        <div className="prof-questions">
-          {questions.map((q, i) => (
-            <div key={i} className="prof-question-card">
-              <div className="prof-question-num">Q{i + 1}</div>
-              <div className="prof-question-text">{q}</div>
-            </div>
-          ))}
-        </div>
-      )}
-      {!questions.length && !loading && (
-        <div className="prof-hint">Generate questions to start practicing</div>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
-// MAIN PROFILE COMPONENT
-// ─────────────────────────────────────────────
-export default function Profile() {
+export default function Profile({ onNavigate }) {
   const { currentUser, token } = useAuth();
+  const { profile, loading, error, setProfile, updateProfile, saveSkills, saveGap, setPlanItem } =
+    useCareerProfile();
 
-  // Navigation state
   const [activeTab, setActiveTab] = useState("overview");
-
-  // Profile state
-  const [visaStatus, setVisaStatus] = useState("student");
-  const [targetRole, setTargetRole] = useState("");
   const [editingRole, setEditingRole] = useState(false);
-
-  // CV state
+  const [roleDraft, setRoleDraft] = useState("");
   const [cvFile, setCvFile] = useState(null);
   const [cvLoading, setCvLoading] = useState(false);
-  const [cvSkills, setCvSkills] = useState([]);
-  const [cvUploaded, setCvUploaded] = useState(false);
-
-  // Skills state
-  const [allSkills, setAllSkills] = useState([]);
   const [manualSkill, setManualSkill] = useState("");
-
-  // Gap analysis state
   const [gapLoading, setGapLoading] = useState(false);
-  const [gapResult, setGapResult] = useState(null);
-
-  // UI state
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
 
@@ -423,17 +327,47 @@ export default function Profile() {
     clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 3400);
   }, []);
-
   useEffect(() => () => clearTimeout(toastTimer.current), []);
 
-  // CV Upload
+  const skills = profile?.skills || [];
+  const targetRole = profile?.targetRole || "";
+  const gap = profile?.gap || null;
+  const plan = profile?.plan || [];
+  const ats = profile?.ats || null;
+  const gapStale = !!gap && profile.gapRole.toLowerCase() !== targetRole.toLowerCase();
+
+  // Readiness is recomputed from current skills so ticking the plan moves it
+  const required = gap ? gap.required_skills || [...(gap.matching_skills || []), ...(gap.missing_required || [])] : [];
+  const matched = required.filter((r) => hasSkill(skills, r));
+  const stillMissing = required.filter((r) => !hasSkill(skills, r));
+  const liveScore = required.length ? Math.round((matched.length / required.length) * 100) : 0;
+  const planDone = plan.filter((p) => p.done).length;
+  const cvSkills = skills.filter((s) => s.source === "cv");
+  const withEvidence = cvSkills.filter((s) => s.evidence).length;
+
+  const run = async (fn, failMsg) => {
+    try {
+      return await fn();
+    } catch (err) {
+      flash("error", err.response?.data?.message || failMsg);
+      return null;
+    }
+  };
+
+  const saveRole = async () => {
+    setEditingRole(false);
+    const next = roleDraft.trim();
+    if (next === targetRole) return;
+    const ok = await run(() => updateProfile({ targetRole: next }), "Could not save role");
+    if (ok) flash("success", "Target role updated");
+  };
+
   const pickFile = (f) => {
     if (f.type && f.type !== "application/pdf" && !f.name.toLowerCase().endsWith(".pdf")) {
       flash("error", "PDF only");
       return;
     }
     setCvFile(f);
-    setCvUploaded(false);
   };
 
   const uploadCV = async () => {
@@ -445,91 +379,180 @@ export default function Profile() {
       const res = await axios.post(CV_ENDPOINT, fd, {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" },
       });
-      const found = res.data?.skills_found || [];
-      setCvSkills(found);
-      setAllSkills((prev) => Array.from(new Set([...found, ...prev])));
-      setCvUploaded(true);
-      flash("success", `Found ${found.length} skill${found.length === 1 ? "" : "s"}`);
+      setProfile({
+        ...profile,
+        skills: res.data.skills || skills,
+        hasCv: true,
+        cvUploadedAt: new Date().toISOString(),
+      });
+      setCvFile(null);
+      flash("success", `Found ${res.data?.skills_count ?? 0} skills in your CV`);
     } catch (err) {
       flash("error", err.response?.data?.message || "Upload failed");
     }
     setCvLoading(false);
   };
 
-  // Skills
-  const addSkill = () => {
-    const s = manualSkill.trim();
-    if (!s) return;
-    if (!allSkills.some((x) => x.toLowerCase() === s.toLowerCase())) {
-      setAllSkills((prev) => [...prev, s]);
-      flash("success", "Skill added");
-    }
+  const addSkill = async () => {
+    const name = manualSkill.trim();
+    if (!name) return;
     setManualSkill("");
+    if (skills.some((s) => s.name.toLowerCase() === name.toLowerCase())) return;
+    await run(() => saveSkills([...skills, { name, source: "manual", evidence: "" }]), "Could not add skill");
   };
 
-  const removeSkill = (skill) => setAllSkills((prev) => prev.filter((s) => s !== skill));
-  const isManual = (skill) => !cvSkills.includes(skill);
+  const removeSkill = async (skill) => {
+    if (skill.source === "learned" && plan.some((p) => p.skill.toLowerCase() === skill.name.toLowerCase())) {
+      await run(() => setPlanItem(skill.name, false), "Could not remove skill");
+      return;
+    }
+    await run(() => saveSkills(skills.filter((s) => s.name !== skill.name)), "Could not remove skill");
+  };
 
-  // Analysis
   const analyseGap = async () => {
-    if (!targetRole.trim()) {
-      flash("error", "Enter target role");
-      return;
-    }
-    if (!allSkills.length) {
-      flash("error", "Add at least one skill");
-      return;
-    }
+    if (!targetRole) return flash("error", "Set a target role first");
+    if (!skills.length) return flash("error", "Add at least one skill first");
     setGapLoading(true);
     try {
       const res = await axios.post(GAP_ENDPOINT, {
-        user_skills: allSkills,
+        user_skills: skills.map((s) => s.name),
         target_role: targetRole,
         visa_only: false,
       });
-      setGapResult(res.data);
-      flash("success", "Analysis complete!");
-    } catch (err) {
-      flash("error", "Analysis failed");
+      if (res.data?.error) {
+        flash("error", res.data.error);
+      } else {
+        await saveGap(res.data);
+        flash("success", "Analysis saved to your profile");
+      }
+    } catch {
+      flash("error", "Analysis failed. Check the AI service is running.");
     }
     setGapLoading(false);
   };
 
+  const togglePlan = (item) => run(() => setPlanItem(item.skill, !item.done), "Could not update plan");
+
+  // Strength checklist — every item reads real profile data
+  const checks = [
+    {
+      id: "cv",
+      done: !!profile?.hasCv,
+      title: "Upload your CV",
+      detail: profile?.hasCv ? `${cvSkills.length} skills read from your CV` : "Skills are read from your CV, not guessed",
+      action: "Upload",
+      go: () => setActiveTab("skills"),
+    },
+    {
+      id: "role",
+      done: !!targetRole,
+      title: "Set a target role",
+      detail: targetRole || "Jobs and the gap analysis both use this",
+      action: "Set role",
+      go: () => {
+        setRoleDraft(targetRole);
+        setEditingRole(true);
+      },
+    },
+    {
+      id: "evidence",
+      done: cvSkills.length > 0 && withEvidence === cvSkills.length,
+      title: "Back every skill with CV evidence",
+      detail: cvSkills.length
+        ? `${withEvidence} of ${cvSkills.length} CV skills have a matching line in your CV`
+        : "Appears once a CV is uploaded",
+      action: "Review",
+      go: () => setActiveTab("skills"),
+    },
+    {
+      id: "gap",
+      done: !!gap && !gapStale,
+      title: "Compare against real job postings",
+      detail: gap
+        ? gapStale
+          ? `Analysis is for "${profile.gapRole}", not "${targetRole}"`
+          : `${matched.length} of ${required.length} required skills matched`
+        : "Uses live postings for your target role",
+      action: gap ? "Re-run" : "Analyse",
+      go: () => setActiveTab("gap"),
+    },
+    {
+      id: "ats",
+      done: !!ats,
+      title: "Scan your CV against a job description",
+      detail: ats
+        ? `Last ATS score ${ats.score}/100${ats.missingKeywords.length ? `, ${ats.missingKeywords.length} keywords missing` : ""}`
+        : "See which keywords a screening tool would miss",
+      action: "Open ATS",
+      go: () => onNavigate && onNavigate("ats"),
+    },
+    {
+      id: "plan",
+      done: plan.length > 0 && planDone === plan.length,
+      title: "Work through your learning plan",
+      detail: plan.length ? `${planDone} of ${plan.length} skills done` : "Created when you run the gap analysis",
+      action: "Open plan",
+      go: () => setActiveTab("gap"),
+    },
+  ];
+  const strength = Math.round((checks.filter((c) => c.done).length / checks.length) * 100);
+  const nextStep = checks.find((c) => !c.done);
+
   const tabs = [
     { id: "overview", label: "Overview", icon: Ic.target },
     { id: "skills", label: "Skills", icon: Ic.sparkle },
-    { id: "roadmap", label: "Roadmap", icon: Ic.map },
-    { id: "insights", label: "Market", icon: Ic.briefcase },
-    { id: "interview", label: "Interview", icon: Ic.mic },
+    { id: "gap", label: "Gap & Plan", icon: Ic.briefcase },
   ];
+
+  if (loading) {
+    return (
+      <div className="prof">
+        <style>{CSS}</style>
+        <p className="prof-hint">Loading your profile…</p>
+      </div>
+    );
+  }
+  if (error || !profile) {
+    return (
+      <div className="prof">
+        <style>{CSS}</style>
+        <p className="prof-hint">{error || "Profile unavailable"}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="prof">
       <style>{CSS}</style>
       <Toast toast={toast} />
 
-      {/* HEADER */}
       <header className="prof-header">
         <div className="prof-header-content">
           <div className="prof-avatar-lg">{initials(currentUser?.name)}</div>
           <div className="prof-header-info">
             <h1 className="prof-name">{currentUser?.name || "Your Profile"}</h1>
             <div className="prof-meta">
-              <span className="prof-visa">{visaStatus === "student" ? "Tier 4 Student" : "Graduate Route"}</span>
+              <span className="prof-visa">{profile.visaType || "Visa not set"}</span>
               <span className="prof-separator">•</span>
               <span className="prof-role-display">
                 {editingRole ? (
                   <input
                     type="text"
-                    value={targetRole}
-                    onChange={(e) => setTargetRole(e.target.value)}
-                    onBlur={() => setEditingRole(false)}
-                    onKeyDown={(e) => e.key === "Enter" && setEditingRole(false)}
+                    value={roleDraft}
+                    onChange={(e) => setRoleDraft(e.target.value)}
+                    onBlur={saveRole}
+                    onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
                     autoFocus
                     className="prof-role-input"
                   />
                 ) : (
-                  <span onClick={() => setEditingRole(true)} className="prof-role-clickable">
+                  <span
+                    onClick={() => {
+                      setRoleDraft(targetRole);
+                      setEditingRole(true);
+                    }}
+                    className="prof-role-clickable"
+                  >
                     {targetRole || "Set target role"}
                   </span>
                 )}
@@ -539,7 +562,6 @@ export default function Profile() {
         </div>
       </header>
 
-      {/* TABS */}
       <nav className="prof-tabs">
         {tabs.map((tab) => (
           <button
@@ -553,48 +575,53 @@ export default function Profile() {
         ))}
       </nav>
 
-      {/* CONTENT */}
       <div className="prof-content">
-        {/* OVERVIEW */}
         {activeTab === "overview" && (
           <div className="prof-panel">
-            <div className="prof-panel-title">Profile Overview</div>
-            <div className="prof-overview-grid">
-              <div className="prof-overview-card">
-                <div className="prof-card-label">Current Skills</div>
-                <div className="prof-card-value">{allSkills.length}</div>
-                <div className="prof-card-sub">in your profile</div>
-              </div>
-              {gapResult && (
-                <>
-                  <div className="prof-overview-card">
-                    <div className="prof-card-label">Market Readiness</div>
-                    <div className="prof-card-value">{gapResult.readiness_score}%</div>
-                    <div className="prof-card-sub">{scoreBand(gapResult.readiness_score).label}</div>
-                  </div>
-                  <div className="prof-overview-card">
-                    <div className="prof-card-label">Skills Match</div>
-                    <div className="prof-card-value">{(gapResult.matching_skills || []).length}</div>
-                    <div className="prof-card-sub">of required skills</div>
-                  </div>
-                </>
-              )}
+            <div className="prof-panel-title">Profile strength</div>
+            <div className="prof-bar-row">
+              <div className="prof-bar"><div className="prof-bar-fill" style={{ width: `${strength}%` }} /></div>
+              <span className="prof-bar-num">{strength}%</span>
             </div>
+            {nextStep && (
+              <p className="prof-next">
+                Next: <strong>{nextStep.title}</strong>
+              </p>
+            )}
+            <div className="prof-checks">
+              {checks.map((c) => (
+                <div key={c.id} className={`prof-check ${c.done ? "is-done" : ""}`}>
+                  <span className="prof-check-dot">{c.done ? Ic.check(12) : null}</span>
+                  <div className="prof-check-body">
+                    <div className="prof-check-title">{c.title}</div>
+                    <div className="prof-check-detail">{c.detail}</div>
+                  </div>
+                  <button className="prof-link-btn" onClick={c.go}>{c.action}</button>
+                </div>
+              ))}
+            </div>
+            {targetRole && (
+              <button className="prof-primary prof-primary--block" onClick={() => onNavigate && onNavigate("jobs")}>
+                Browse {targetRole} jobs
+              </button>
+            )}
           </div>
         )}
 
-        {/* SKILLS */}
         {activeTab === "skills" && (
           <div className="prof-panel">
-            <div className="prof-panel-title">Skill Assessment</div>
+            <div className="prof-panel-title">Skills and evidence</div>
             <Dropzone
               file={cvFile}
               loading={cvLoading}
-              uploaded={cvUploaded}
+              uploaded={false}
               onPick={pickFile}
               onClear={() => setCvFile(null)}
               onUpload={uploadCV}
             />
+            {profile.cvUploadedAt && (
+              <p className="prof-hint">CV last read {new Date(profile.cvUploadedAt).toLocaleDateString()}</p>
+            )}
             <div className="prof-skills-section">
               <div className="prof-skill-add">
                 <input
@@ -604,94 +631,174 @@ export default function Profile() {
                   onKeyDown={(e) => e.key === "Enter" && addSkill()}
                   placeholder="Add skill manually…"
                 />
-                <button className="prof-add-btn" onClick={addSkill}>{Ic.plus(15)}</button>
+                <button className="prof-add-btn" onClick={addSkill} aria-label="Add skill">{Ic.plus(15)}</button>
               </div>
-              {allSkills.length > 0 ? (
-                <div className="prof-skills">
-                  {allSkills.map((skill) => (
-                    <span key={skill} className={`prof-chip ${isManual(skill) ? "is-manual" : ""}`}>
-                      {skill}
-                      <button className="prof-chip-x" onClick={() => removeSkill(skill)}>{Ic.x(10)}</button>
-                    </span>
+              {skills.length > 0 ? (
+                <div className="prof-skill-rows">
+                  {skills.map((s) => (
+                    <div key={s.name} className="prof-skill-row">
+                      <div className="prof-skill-main">
+                        <span className="prof-skill-name">{s.name}</span>
+                        <span className={`prof-badge prof-badge--${s.source}`}>{SOURCE_LABEL[s.source]}</span>
+                      </div>
+                      <div className="prof-skill-ev">
+                        {s.source === "cv"
+                          ? s.evidence
+                            ? `"${s.evidence}"`
+                            : "No CV line mentions this by name. Add it to your experience or projects."
+                          : s.source === "learned"
+                            ? "Marked as learned from your plan. Add it to your CV so ATS can see it."
+                            : "Not on your CV yet."}
+                      </div>
+                      <button className="prof-chip-x prof-skill-x" onClick={() => removeSkill(s)} aria-label={`Remove ${s.name}`}>
+                        {Ic.x(11)}
+                      </button>
+                    </div>
                   ))}
                 </div>
               ) : (
-                <p className="prof-hint">Upload CV or add skills to get started</p>
+                <p className="prof-hint">Upload your CV or add skills to get started</p>
               )}
             </div>
-            {allSkills.length > 0 && !gapResult && (
-              <button className="prof-primary prof-primary--block" onClick={analyseGap} disabled={gapLoading}>
-                {gapLoading ? "Analysing…" : "Analyse Market Readiness"}
-              </button>
-            )}
           </div>
         )}
 
-        {/* ROADMAP */}
-        {activeTab === "roadmap" && (
+        {activeTab === "gap" && (
           <div className="prof-panel">
-            <CareerRoadmap
-              currentRole={currentUser?.name || "Your Profile"}
-              targetRole={targetRole}
-              currentSkills={allSkills}
-              gapResult={gapResult}
-            />
-          </div>
-        )}
+            <div className="prof-panel-title">Gap and learning plan</div>
+            {!gap ? (
+              <>
+                <p className="prof-hint">
+                  Compares your skills with live postings for {targetRole || "your target role"}.
+                </p>
+                <button className="prof-primary prof-primary--block" onClick={analyseGap} disabled={gapLoading}>
+                  {gapLoading ? "Analysing…" : "Analyse against job postings"}
+                </button>
+              </>
+            ) : (
+              <>
+                {gapStale && (
+                  <p className="prof-warn">
+                    This analysis was for "{profile.gapRole}". Re-run it for "{targetRole}".
+                  </p>
+                )}
+                <div className="prof-gap-top">
+                  <RadialGauge score={liveScore} />
+                  <div className="prof-gap-sum">
+                    <div className="prof-gap-line">
+                      {matched.length} of {required.length} skills asked for in {gap.jobs_analysed} postings are on your profile.
+                    </div>
+                    {liveScore !== gap.readiness_score && (
+                      <div className="prof-gap-sub">Was {gap.readiness_score}% when you ran the analysis.</div>
+                    )}
+                    <button className="prof-link-btn" onClick={analyseGap} disabled={gapLoading}>
+                      {gapLoading ? "Analysing…" : "Re-run analysis"}
+                    </button>
+                  </div>
+                </div>
 
-        {/* MARKET INSIGHTS */}
-        {activeTab === "insights" && (
-          <div className="prof-panel">
-            <div className="prof-panel-title">Market Insights</div>
-            {gapResult ? (
-              <div className="prof-insights">
-                <div className="prof-insight-card">
-                  <div className="prof-insight-label">Jobs in Market</div>
-                  <div className="prof-insight-value">{gapResult.jobs_analysed || 0}</div>
-                  <div className="prof-insight-sub">for {targetRole}</div>
-                </div>
-                <div className="prof-insight-card">
-                  <div className="prof-insight-label">Visa Sponsoring</div>
-                  <div className="prof-insight-value">{gapResult.visa_sponsors_found || 0}</div>
-                  <div className="prof-insight-sub">companies hiring</div>
-                </div>
-                {gapResult.matching_skills && gapResult.matching_skills.length > 0 && (
-                  <div className="prof-insight-block">
-                    <div className="prof-insight-title">Your Strengths</div>
+                {matched.length > 0 && (
+                  <div className="prof-block">
+                    <div className="prof-block-title">Matched</div>
                     <div className="prof-tags">
-                      {gapResult.matching_skills.map((s) => (
+                      {matched.map((s) => (
                         <span key={s} className="prof-tag prof-tag--good">{Ic.check(11)} {s}</span>
                       ))}
                     </div>
                   </div>
                 )}
-                {gapResult.missing_required && gapResult.missing_required.length > 0 && (
-                  <div className="prof-insight-block">
-                    <div className="prof-insight-title">Critical Gaps</div>
-                    <div className="prof-gaps">
-                      {gapResult.missing_required.map((s) => (
-                        <div key={s} className="prof-gap">{s}</div>
+
+                {plan.length > 0 && (
+                  <div className="prof-block">
+                    <div className="prof-block-title">
+                      Learning plan <span>{planDone}/{plan.length}</span>
+                    </div>
+                    <div className="prof-plan">
+                      {plan.map((p) => (
+                        <div key={p.skill} className={`prof-plan-item ${p.done ? "is-done" : ""}`}>
+                          <button
+                            className="prof-plan-box"
+                            onClick={() => togglePlan(p)}
+                            aria-label={`Mark ${p.skill} as ${p.done ? "not learned" : "learned"}`}
+                          >
+                            {p.done ? Ic.check(12) : null}
+                          </button>
+                          <div className="prof-plan-body">
+                            <div className="prof-plan-skill">{p.skill}</div>
+                            {p.resource && (
+                              <div className="prof-plan-res">
+                                {p.url ? (
+                                  <a href={p.url} target="_blank" rel="noreferrer">{p.resource}</a>
+                                ) : (
+                                  p.resource
+                                )}
+                                {p.time ? ` · about ${p.time}` : ""}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       ))}
+                    </div>
+                    <p className="prof-hint">
+                      Resource suggestions are AI-generated, so check the links. Ticking a skill adds it to your profile as self-reported.
+                    </p>
+                  </div>
+                )}
+
+                {stillMissing.length > 0 && plan.length === 0 && (
+                  <div className="prof-block">
+                    <div className="prof-block-title">Still missing</div>
+                    <div className="prof-gaps">
+                      {stillMissing.map((s) => <div key={s} className="prof-gap">{s}</div>)}
                     </div>
                   </div>
                 )}
-              </div>
-            ) : (
-              <p className="prof-hint">Run skill analysis to see market insights</p>
-            )}
-          </div>
-        )}
 
-        {/* INTERVIEW PREP */}
-        {activeTab === "interview" && (
-          <div className="prof-panel">
-            <InterviewPrep targetRole={targetRole} skills={allSkills} gapResult={gapResult} />
+                {ats && ats.missingKeywords.length > 0 && (
+                  <div className="prof-block">
+                    <div className="prof-block-title">Keywords your last ATS scan missed</div>
+                    <div className="prof-gaps">
+                      {ats.missingKeywords.map((k) => <div key={k} className="prof-gap">{k}</div>)}
+                    </div>
+                  </div>
+                )}
+
+                <div className="prof-block">
+                  <div className="prof-block-title">Postings from licensed sponsors</div>
+                  {gap.sponsor_roles && gap.sponsor_roles.length > 0 ? (
+                    <>
+                      <p className="prof-hint">
+                        {gap.sponsor_roles.length} of {gap.jobs_analysed} analysed postings are from employers on the Home Office
+                        register of licensed sponsors. Being listed does not mean this role is sponsored, so confirm with the employer. Skill matches only use the short preview text job boards share, so they undercount.
+                      </p>
+                      <div className="prof-roles">
+                        {gap.sponsor_roles.map((r, i) => (
+                          <div key={`${r.company}-${r.title}-${i}`} className="prof-role-card">
+                            <div className="prof-role-title">{r.title}</div>
+                            <div className="prof-role-co">{r.company}{r.location ? `, ${r.location}` : ""}</div>
+                            <div className="prof-role-match">
+                              {r.skills_mentioned.length
+                                ? `Mentions ${r.skills_mentioned.length} of your skills: ${r.skills_mentioned.slice(0, 4).join(", ")}`
+                                : "Your skills aren't named in the short listing text we can see. Open the posting for the full requirements."}
+                            </div>
+                            {r.url && <a className="prof-role-link" href={r.url} target="_blank" rel="noreferrer">View posting</a>}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="prof-hint">None of the {gap.jobs_analysed} analysed postings were from employers on the register.</p>
+                  )}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
     </div>
   );
 }
+
 
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
@@ -1046,222 +1153,67 @@ const CSS = `
   to { transform: rotate(360deg); }
 }
 
-/* ROADMAP */
-.prof-roadmap {
-  background: rgba(124,111,239,0.05);
-  border: 1px solid var(--bd);
-  border-radius: 16px;
-  padding: 32px 24px;
-  margin-top: 16px;
-}
+/* STRENGTH */
+.prof-bar-row { display: flex; align-items: center; gap: 12px; }
+.prof-bar { flex: 1; height: 8px; border-radius: 99px; background: var(--s3); overflow: hidden; }
+.prof-bar-fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--p1), var(--tl)); transition: width 0.6s cubic-bezier(0.2,0.8,0.2,1); }
+.prof-bar-num { font-size: 14px; font-weight: 700; min-width: 40px; text-align: right; }
+.prof-next { font-size: 13px; color: var(--tx2); margin: 12px 0 20px; }
+.prof-next strong { color: var(--tx); font-weight: 600; }
+.prof-checks { display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; }
+.prof-check { display: flex; align-items: center; gap: 14px; background: var(--s2); border: 1px solid var(--bd); border-radius: 14px; padding: 14px 16px; }
+.prof-check.is-done { border-color: rgba(0,212,170,0.25); }
+.prof-check-dot { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--tx3); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #08080f; }
+.prof-check.is-done .prof-check-dot { background: var(--tl); border-color: var(--tl); }
+.prof-check-body { flex: 1; min-width: 0; }
+.prof-check-title { font-size: 14px; font-weight: 600; }
+.prof-check-detail { font-size: 12px; color: var(--tx2); margin-top: 2px; }
 
-.prof-roadmap-title {
-  font-size: 16px;
-  font-weight: 700;
-  margin-bottom: 28px;
-  text-align: center;
-}
+/* SKILL ROWS */
+.prof-skill-rows { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+.prof-skill-row { position: relative; background: var(--s2); border: 1px solid var(--bd); border-radius: 12px; padding: 12px 40px 12px 14px; }
+.prof-skill-main { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.prof-skill-name { font-size: 14px; font-weight: 600; }
+.prof-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 3px 8px; border-radius: 99px; }
+.prof-badge--cv { background: rgba(124,111,239,0.15); color: var(--p2); }
+.prof-badge--manual { background: rgba(245,196,81,0.14); color: var(--gold); }
+.prof-badge--learned { background: rgba(0,212,170,0.14); color: var(--tl); }
+.prof-skill-ev { font-size: 12px; color: var(--tx2); margin-top: 6px; line-height: 1.45; overflow-wrap: anywhere; }
+.prof-skill-x { position: absolute; top: 12px; right: 12px; }
 
-.prof-roadmap-stages {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 16px;
-  position: relative;
-}
+/* GAP */
+.prof-warn { font-size: 13px; color: var(--gold); background: rgba(245,196,81,0.08); border: 1px solid rgba(245,196,81,0.25); padding: 10px 14px; border-radius: 12px; margin: 0 0 16px; }
+.prof-gap-top { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; margin-bottom: 8px; }
+.prof-gap-top .prof-gauge { margin: 0; flex-shrink: 0; }
+.prof-gap-sum { flex: 1; min-width: 220px; }
+.prof-gap-line { font-size: 15px; font-weight: 600; line-height: 1.45; }
+.prof-gap-sub { font-size: 12px; color: var(--tx2); margin: 6px 0; }
+.prof-block { margin-top: 28px; }
+.prof-block-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--tx2); margin-bottom: 12px; }
+.prof-block-title span { color: var(--p2); margin-left: 6px; }
+.prof-tags, .prof-gaps { display: flex; flex-wrap: wrap; gap: 8px; }
+.prof-tag { display: inline-flex; align-items: center; gap: 5px; padding: 7px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+.prof-tag--good { background: rgba(0,212,170,0.12); color: var(--tl); }
+.prof-gap { background: rgba(255,107,107,0.15); color: var(--red); padding: 8px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }
 
-.prof-stage {
-  text-align: center;
-  position: relative;
-}
+.prof-plan { display: flex; flex-direction: column; gap: 8px; }
+.prof-plan-item { display: flex; gap: 12px; align-items: flex-start; background: var(--s2); border: 1px solid var(--bd); border-radius: 12px; padding: 12px 14px; }
+.prof-plan-item.is-done { opacity: 0.6; }
+.prof-plan-item.is-done .prof-plan-skill { text-decoration: line-through; }
+.prof-plan-box { width: 22px; height: 22px; border-radius: 6px; border: 1.5px solid var(--tx3); background: transparent; color: #08080f; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; padding: 0; }
+.prof-plan-item.is-done .prof-plan-box { background: var(--tl); border-color: var(--tl); }
+.prof-plan-skill { font-size: 14px; font-weight: 600; }
+.prof-plan-res { font-size: 12px; color: var(--tx2); margin-top: 3px; }
+.prof-plan-res a { color: var(--p2); text-decoration: none; }
+.prof-plan-res a:hover { text-decoration: underline; }
 
-.prof-stage-circle {
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, rgba(124,111,239,0.2), rgba(232,121,249,0.2));
-  border: 2px solid var(--bd2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 28px;
-  margin: 0 auto 12px;
-  transition: all 0.3s;
-}
-
-.prof-stage-circle:hover {
-  border-color: var(--p2);
-  transform: scale(1.1);
-}
-
-.prof-stage-label {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--tx);
-  margin-bottom: 4px;
-}
-
-.prof-stage-skills {
-  font-size: 11px;
-  color: var(--tx2);
-}
-
-.prof-stage-arrow {
-  position: absolute;
-  right: -12px;
-  top: 8px;
-  color: var(--p2);
-  opacity: 0.5;
-}
-
-.prof-roadmap-timeline {
-  position: relative;
-  height: 2px;
-  margin-top: 20px;
-}
-
-.prof-timeline-line {
-  height: 2px;
-  background: linear-gradient(90deg, var(--p1), var(--p2), var(--mg));
-  border-radius: 1px;
-}
-
-/* INSIGHTS */
-.prof-insights {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-}
-
-.prof-insight-card {
-  background: var(--s2);
-  border: 1px solid var(--bd);
-  border-radius: 14px;
-  padding: 18px;
-  text-align: center;
-}
-
-.prof-insight-label {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--tx2);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin-bottom: 8px;
-}
-
-.prof-insight-value {
-  font-size: 28px;
-  font-weight: 800;
-  color: var(--p2);
-  margin-bottom: 4px;
-}
-
-.prof-insight-sub {
-  font-size: 11px;
-  color: var(--tx3);
-}
-
-.prof-insight-block {
-  grid-column: 1 / -1;
-  margin-top: 16px;
-}
-
-.prof-insight-title {
-  font-size: 14px;
-  font-weight: 700;
-  margin-bottom: 12px;
-}
-
-.prof-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.prof-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
-  border-radius: 20px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.prof-tag--good {
-  background: rgba(0,212,170,0.2);
-  color: var(--tl);
-}
-
-.prof-gaps {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.prof-gap {
-  background: rgba(255,107,107,0.15);
-  color: var(--red);
-  padding: 8px 12px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-/* INTERVIEW */
-.prof-interview-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
-}
-
-.prof-interview-title {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.prof-interview-sub {
-  font-size: 12px;
-  color: var(--tx2);
-  margin-top: 4px;
-}
-
-.prof-questions {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 16px;
-  margin-top: 20px;
-}
-
-.prof-question-card {
-  background: var(--s2);
-  border: 1px solid var(--bd);
-  border-radius: 14px;
-  padding: 16px;
-  transition: all 0.3s;
-}
-
-.prof-question-card:hover {
-  border-color: var(--bd2);
-  transform: translateY(-2px);
-}
-
-.prof-question-num {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--p2);
-  text-transform: uppercase;
-  margin-bottom: 8px;
-}
-
-.prof-question-text {
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--tx);
-}
+.prof-roles { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.prof-role-card { background: var(--s2); border: 1px solid var(--bd); border-radius: 14px; padding: 14px 16px; }
+.prof-role-title { font-size: 14px; font-weight: 600; }
+.prof-role-co { font-size: 12px; color: var(--tx2); margin-top: 2px; }
+.prof-role-match { font-size: 12px; margin-top: 10px; line-height: 1.45; }
+.prof-role-link { display: inline-block; margin-top: 10px; font-size: 12px; font-weight: 600; color: var(--p2); text-decoration: none; }
+.prof-role-link:hover { text-decoration: underline; }
 
 /* DROPZONE */
 .prof-drop {
@@ -1497,10 +1449,6 @@ const CSS = `
 
   .prof-overview-grid {
     grid-template-columns: 1fr;
-  }
-
-  .prof-roadmap-stages {
-    grid-template-columns: repeat(2, 1fr);
   }
 
   .prof-header-content {

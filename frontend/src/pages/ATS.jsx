@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import axios from "axios";
+import { useAuth } from "../context/AuthContext";
+import { saveAtsResult } from "../hooks/useCareerProfile";
 
 // ─────────────────────────────────────────────────────────────
 // ATS READINESS PAGE · Arivo AI (V2 Premium Architecture)
@@ -233,6 +235,7 @@ const calculateRiskScore = (atsScore, jobDescription, cvText) => {
 };
 
 export default function ATS({ onNavigate }) {
+  const { token } = useAuth();
   // AMNESIA FIX + ESLINT CASCADING RENDER FIX:
   // We process the sessionStorage directly during the useState initialization.
   const [stage, setStage] = useState(() => {
@@ -382,6 +385,7 @@ export default function ATS({ onNavigate }) {
       clearInterval(timer);
       setStepDone(CHECKS.length - 1);
       setResult(res.data);
+      saveAtsResult(token, res.data.overall_score, res.data.missing_keywords);
       setTimeout(() => {
         setAnalysing(false);
         setStage("results");

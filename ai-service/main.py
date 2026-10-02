@@ -1853,8 +1853,34 @@ Return ONLY the JSON. No explanation."""
         if d.metadata.get("visa_sponsor", False)
     ]
 
+    # Per-posting view for sponsor-listed employers: which of the user's
+    # skills literally appear in that posting's text
+    sponsor_roles = []
+    for d in job_docs:
+        if not d.metadata.get("visa_sponsor", False):
+            continue
+        text = f"{d.page_content or ''} {d.metadata.get('description_full', '') or ''}".lower()
+        mentioned = [
+            s
+            for s in request.user_skills
+            if isinstance(s, str) and s.strip() and s.strip().lower() in text
+        ]
+        sponsor_roles.append(
+            {
+                "title": d.metadata.get("title", ""),
+                "company": d.metadata.get("company", ""),
+                "location": d.metadata.get("location", ""),
+                "url": d.metadata.get("url", ""),
+                "skills_mentioned": mentioned,
+                "text_chars": len(text),
+            }
+        )
+    sponsor_roles.sort(key=lambda r: len(r["skills_mentioned"]), reverse=True)
+
     return {
         "target_role": target_role,
+        "required_skills": required_skills,
+        "sponsor_roles": sponsor_roles[:8],
         "readiness_score": score,
         "jobs_analysed": len(job_docs),
         "visa_sponsors_found": len(visa_sponsors),

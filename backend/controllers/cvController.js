@@ -3,6 +3,15 @@ const path = require("path");
 const axios = require("axios");
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:8000";
 const FormData = require("form-data");
+const User = require("../models/User");
+
+// Find the CV line that mentions a skill — real evidence, not a guess
+const findEvidence = (cvText, skill) => {
+  const escaped = skill.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`(^|[^a-z0-9])${escaped}($|[^a-z0-9])`, "i");
+  const line = cvText.split(/\r?\n/).map((l) => l.trim()).find((l) => l.length > 3 && re.test(l));
+  return line ? line.slice(0, 160) : "";
+};
 
 // ─────────────────────────────────────────────
 // EXTRACT TEXT FROM PDF
@@ -93,10 +102,24 @@ const uploadCV = async (req, res) => {
     // Step 3 — Delete temp PDF file after processing
     fs.unlinkSync(filePath);
 
+    // Step 3b — Save to the career profile. CV skills are replaced;
+    // manual and learned skills are kept.
+    const user = await User.findById(req.user.id);
+    const kept = user.careerProfile.skills.filter((s) => s.source !== "cv");
+    const keptNames = new Set(kept.map((s) => s.name.toLowerCase()));
+    const cvSkills = skills
+      .filter((n) => typeof n === "string" && n.trim() && !keptNames.has(n.trim().toLowerCase()))
+      .map((n) => ({ name: n.trim(), source: "cv", evidence: findEvidence(rawText, n.trim()) }));
+    user.careerProfile.skills = [...cvSkills, ...kept];
+    user.careerProfile.cvText = rawText.slice(0, 20000);
+    user.careerProfile.cvUploadedAt = new Date();
+    await user.save();
+
     // Step 4 — Return results to frontend
     res.status(200).json({
       message: "CV analysed successfully",
       skills_found: skills,
+      skills: user.careerProfile.skills,
       skills_count: skills.length,
       preview: rawText.substring(0, 800) + "...",
     });
