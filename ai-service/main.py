@@ -1432,7 +1432,71 @@ def _scrape_description(url, selectors):
         return None
 
 
+def _reed_description_by_id(job_id):
+    # Official Reed job-details endpoint: complete description, no scraping
+    try:
+        reed_key = os.getenv("REED_API_KEY")
+        if not reed_key:
+            return None
+        r = http_requests.get(
+            f"https://www.reed.co.uk/api/1.0/jobs/{job_id}",
+            auth=(reed_key, ""),
+            timeout=10,
+        )
+        if r.status_code != 200:
+            return None
+        html = r.json().get("jobDescription") or ""
+        text = _html_to_text(html) if html else ""
+        return text if len(text) > 200 else None
+    except Exception as e:
+        print(f"Reed details API error: {e}")
+        return None
+
+
+def _norm_company(name):
+    n = re.sub(r"[^a-z0-9 ]", " ", (name or "").lower())
+    drop = {"ltd", "limited", "plc", "llp", "inc", "uk", "group", "the", "co", "company"}
+    return " ".join(w for w in n.split() if w not in drop)
+
+
+def _norm_title(title):
+    return " ".join(re.sub(r"[^a-z0-9 ]", " ", (title or "").lower()).split())
+
+
+def find_reed_twin_description(title, company, location="london"):
+    # The same vacancy is often posted on both boards. Strict match only:
+    # same company AND same title, so we never hand back another job's text.
+    try:
+        reed_key = os.getenv("REED_API_KEY")
+        if not reed_key or not title or not company:
+            return None
+        r = http_requests.get(
+            "https://www.reed.co.uk/api/1.0/search",
+            params={"keywords": title, "locationName": location or "london", "resultsToTake": 25},
+            auth=(reed_key, ""),
+            timeout=10,
+        )
+        if r.status_code != 200:
+            return None
+        want_c, want_t = _norm_company(company), _norm_title(title)
+        for job in r.json().get("results", []):
+            if (
+                _norm_company(job.get("employerName")) == want_c
+                and _norm_title(job.get("jobTitle")) == want_t
+            ):
+                return _reed_description_by_id(job.get("jobId"))
+        return None
+    except Exception as e:
+        print(f"Reed twin lookup error: {e}")
+        return None
+
+
 def scrape_reed_description(url):
+    m = re.search(r"/(\d+)(?:[/?#]|$)", url or "")
+    if m:
+        text = _reed_description_by_id(m.group(1))
+        if text:
+            return text
     return _scrape_description(
         url,
         [
@@ -1458,6 +1522,9 @@ def scrape_adzuna_description(url):
 class ScrapeRequest(BaseModel):
     url: str
     source: str  # "reed" or "adzuna"
+    title: str = ""
+    company: str = ""
+    location: str = "london"
 
 
 @app.post("/jobs/scrape-description")
@@ -1469,14 +1536,22 @@ def scrape_description(request: ScrapeRequest):
         return {"description": "", "success": False}
 
     full_desc = None
+    via = "page"
 
     if "reed" in source:
         full_desc = scrape_reed_description(url)
+        via = "reed"
     elif "adzuna" in source:
         full_desc = scrape_adzuna_description(url)
+        if not full_desc:
+            # Adzuna blocks some links; try the same vacancy on Reed
+            full_desc = find_reed_twin_description(
+                request.title, request.company, request.location
+            )
+            via = "reed_match"
 
     if full_desc:
-        return {"description": full_desc, "success": True}
+        return {"description": full_desc, "success": True, "via": via}
     else:
         return {"description": "", "success": False}
 

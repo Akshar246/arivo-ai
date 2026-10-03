@@ -540,6 +540,11 @@ function Detail({ job, saved, onToggleSave, onClose, onScan, onNavigate, fullDes
 
       <div className="aj-section-h">Role Description</div>
       {descLoading && <div className="aj-desc-note">Loading the full description…</div>}
+      {fullText && fullDesc?.via === "reed_match" && (
+        <div className="aj-desc-note">
+          Full text taken from the matching Reed listing for this role at {job.company}.
+        </div>
+      )}
       {descPreviewOnly && (
         <div className="aj-desc-note aj-desc-note--warn">
           This is only a preview. {job.source && job.source.includes("adzuna") ? "Adzuna" : "The job board"} limits how much
@@ -686,11 +691,17 @@ export default function Jobs({ onNavigate }) {
     try {
       const res = await axios.post(
         `${import.meta.env.VITE_AI_URL}/jobs/scrape-description`,
-        { url: job.url, source: job.source || "reed" },
-        { timeout: 15000 },
+        {
+          url: job.url,
+          source: job.source || "reed",
+          title: job.title,
+          company: job.company,
+          location: job.location || "london",
+        },
+        { timeout: 20000 },
       );
       if (res.data.success && res.data.description) {
-        return { status: "full", text: res.data.description };
+        return { status: "full", text: res.data.description, via: res.data.via };
       }
     } catch (err) {
       console.warn("Description fetch error:", err);
