@@ -66,7 +66,10 @@ llm = ChatGroq(model="openai/gpt-oss-120b", temperature=0.4)
 # vectorstore — ChromaDB stores and searches vectors
 # retriever — searches ChromaDB for relevant docs
 # ─────────────────────────────────────────────
-embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+# CPU only: the Apple MPS backend crashes when two searches embed at once
+embeddings = HuggingFaceEmbeddings(
+    model_name="all-MiniLM-L6-v2", model_kwargs={"device": "cpu"}
+)
 vectorstore = Chroma(persist_directory="./arivo_db", embedding_function=embeddings)
 retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
 
@@ -205,7 +208,7 @@ def rescue_sponsor_via_reed(title, company, location="london"):
             "locationName": location or "london",
             "resultsToTake": 5,
         }
-        response = http_requests.get(url, params=params, auth=(reed_key, ""))
+        response = http_requests.get(url, params=params, auth=(reed_key, ""), timeout=15)
         if response.status_code != 200:
             return None
 
@@ -253,7 +256,7 @@ def fetch_live_jobs(
         if category:
             params["category"] = category
 
-        response = http_requests.get(url, params=params)
+        response = http_requests.get(url, params=params, timeout=15)
 
         if response.status_code != 200:
             print(f"Adzuna error: {response.status_code}")
@@ -368,7 +371,7 @@ def fetch_reed_jobs(query, max_results=6, location="london"):
             "locationName": location or "london",
             "resultsToTake": max_results,
         }
-        response = http_requests.get(url, params=params, auth=(reed_key, ""))
+        response = http_requests.get(url, params=params, auth=(reed_key, ""), timeout=15)
         if response.status_code != 200:
             print(f"Reed error: {response.status_code}")
             return []
@@ -1348,7 +1351,7 @@ def get_job_categories():
             "app_key": api_key,
             "content-type": "application/json",
         }
-        response = http_requests.get(url, params=params)
+        response = http_requests.get(url, params=params, timeout=15)
         if response.status_code != 200:
             return {"categories": []}
         raw = response.json().get("results", [])

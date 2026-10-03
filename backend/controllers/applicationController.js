@@ -75,4 +75,21 @@ const remove = async (req, res) => {
   }
 };
 
-module.exports = { list, create, update, remove };
+// Unstarring a job removes it from the tracker only while it is still "saved".
+// Anything already applied to or further along is kept.
+const unsave = async (req, res) => {
+  try {
+    const company = clean(req.body.company);
+    const title = clean(req.body.title);
+    const r = await Application.deleteOne({
+      user: req.user.id,
+      jobKey: keyOf(company, title),
+      status: "saved",
+    });
+    res.json({ removed: r.deletedCount });
+  } catch (err) {
+    res.status(500).json({ message: "Could not unsave job" });
+  }
+};
+
+module.exports = { list, create, update, remove, unsave };

@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
+import { useAuth } from "../context/AuthContext";
+import { trackJob, untrackJob } from "../hooks/useApplications";
 
 // ─────────────────────────────────────────────────────────────
 // JOBS PAGE · Arivo AI (V2 Premium Architecture)
@@ -552,6 +554,7 @@ function Detail({ job, saved, onToggleSave, onClose, onScan, onNavigate }) {
 // MAIN JOBS COMPONENT
 // ─────────────────────────────────────────────────────────────
 export default function Jobs({ onNavigate }) {
+  const { token } = useAuth();
   // ESLINT FIX: Initialize all default values dynamically inside useState
   const [query, setQuery] = useState(() => {
     const context = readLS("arivo_pf_context", {});
@@ -657,6 +660,8 @@ export default function Jobs({ onNavigate }) {
 
   const isSaved = (job) => savedJobs.some((s) => jobKey(s) === jobKey(job));
   const toggleSave = (job) => {
+    if (isSaved(job)) untrackJob(token, job);
+    else trackJob(token, job);
     const next = isSaved(job)
       ? savedJobs.filter((s) => jobKey(s) !== jobKey(job))
       : [{ ...job, savedAt: new Date().toISOString() }, ...savedJobs];

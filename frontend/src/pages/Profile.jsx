@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import { useCareerProfile } from "../hooks/useCareerProfile";
+import { useApplications, STATUSES } from "../hooks/useApplications";
 
 const CV_ENDPOINT = `${import.meta.env.VITE_API_URL}/api/cv/upload`;
 const GAP_ENDPOINT = `${import.meta.env.VITE_AI_URL}/skill-gap/analyse`;
@@ -312,6 +313,8 @@ export default function Profile({ onNavigate }) {
   const { profile, loading, error, setProfile, updateProfile, saveSkills, saveGap, setPlanItem } =
     useCareerProfile();
 
+  const tracker = useApplications();
+  const [notesOpen, setNotesOpen] = useState(null);
   const [activeTab, setActiveTab] = useState("overview");
   const [editingRole, setEditingRole] = useState(false);
   const [roleDraft, setRoleDraft] = useState("");
@@ -431,6 +434,19 @@ export default function Profile({ onNavigate }) {
     setGapLoading(false);
   };
 
+  const appKey = (a) => `${a.company}|${a.title}`.toLowerCase();
+  const trackedKeys = new Set(tracker.apps.map(appKey));
+  const countBy = (st) => tracker.apps.filter((a) => a.status === st).length;
+  const saveToTracker = async (r) => {
+    const ok = await run(
+      () => tracker.add({ title: r.title, company: r.company, location: r.location, url: r.url, sponsorVerified: true }),
+      "Could not save job",
+    );
+    if (ok) flash("success", "Saved to your tracker");
+  };
+  const changeStatus = (a, status) => run(() => tracker.setStatus(a._id, status), "Could not update status");
+  const removeApp = (a) => run(() => tracker.remove(a._id), "Could not remove");
+
   const togglePlan = (item) => run(() => setPlanItem(item.skill, !item.done), "Could not update plan");
 
   // Strength checklist — every item reads real profile data
@@ -487,6 +503,16 @@ export default function Profile({ onNavigate }) {
       go: () => onNavigate && onNavigate("ats"),
     },
     {
+      id: "track",
+      done: tracker.apps.length > 0,
+      title: "Track your applications",
+      detail: tracker.apps.length
+        ? `${tracker.apps.length} tracked: ${countBy("applied")} applied, ${countBy("interview")} interviewing`
+        : "Star jobs in Jobs to save them here",
+      action: tracker.apps.length ? "Open tracker" : "Find jobs",
+      go: () => (tracker.apps.length ? setActiveTab("tracker") : onNavigate && onNavigate("jobs")),
+    },
+    {
       id: "plan",
       done: plan.length > 0 && planDone === plan.length,
       title: "Work through your learning plan",
@@ -502,6 +528,7 @@ export default function Profile({ onNavigate }) {
     { id: "overview", label: "Overview", icon: Ic.target },
     { id: "skills", label: "Skills", icon: Ic.sparkle },
     { id: "gap", label: "Gap & Plan", icon: Ic.briefcase },
+    { id: "tracker", label: "Tracker", icon: Ic.file },
   ];
 
   if (loading) {
@@ -781,7 +808,14 @@ export default function Profile({ onNavigate }) {
                                 ? `Mentions ${r.skills_mentioned.length} of your skills: ${r.skills_mentioned.slice(0, 4).join(", ")}`
                                 : "Your skills aren't named in the short listing text we can see. Open the posting for the full requirements."}
                             </div>
-                            {r.url && <a className="prof-role-link" href={r.url} target="_blank" rel="noreferrer">View posting</a>}
+                            <div className="prof-role-actions">
+                              {r.url && <a className="prof-role-link" href={r.url} target="_blank" rel="noreferrer">View posting</a>}
+                              {trackedKeys.has(appKey(r)) ? (
+                                <span className="prof-role-saved">Saved to tracker</span>
+                              ) : (
+                                <button className="prof-link-btn" onClick={() => saveToTracker(r)}>Save to tracker</button>
+                              )}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -791,6 +825,70 @@ export default function Profile({ onNavigate }) {
                   )}
                 </div>
               </>
+            )}
+          </div>
+        )}
+
+        {activeTab === "tracker" && (
+          <div className="prof-panel">
+            <div className="prof-panel-title">Application tracker</div>
+            {tracker.loading ? (
+              <p className="prof-hint">Loading…</p>
+            ) : tracker.error ? (
+              <p className="prof-hint">{tracker.error}</p>
+            ) : tracker.apps.length === 0 ? (
+              <>
+                <p className="prof-hint">Nothing tracked yet. Star a job in Jobs and it shows up here.</p>
+                <button className="prof-primary prof-primary--block" onClick={() => onNavigate && onNavigate("jobs")}>
+                  Find jobs
+                </button>
+              </>
+            ) : (
+              <div className="prof-board">
+                {STATUSES.map((st) => {
+                  const col = tracker.apps.filter((a) => a.status === st);
+                  return (
+                    <div key={st} className="prof-col">
+                      <div className="prof-col-head">
+                        <span>{st}</span>
+                        <span className="prof-col-count">{col.length}</span>
+                      </div>
+                      {col.map((a) => (
+                        <div key={a._id} className="prof-app">
+                          <div className="prof-app-title">{a.title}</div>
+                          <div className="prof-app-co">{a.company}{a.location ? `, ${a.location}` : ""}</div>
+                          {a.sponsorVerified && <span className="prof-badge prof-badge--learned">On sponsor register</span>}
+                          <select
+                            className="prof-select"
+                            value={a.status}
+                            onChange={(e) => changeStatus(a, e.target.value)}
+                            aria-label={`Status for ${a.title} at ${a.company}`}
+                          >
+                            {STATUSES.map((x) => <option key={x} value={x}>{x}</option>)}
+                          </select>
+                          {notesOpen === a._id && (
+                            <textarea
+                              className="prof-notes"
+                              defaultValue={a.notes}
+                              placeholder="Notes: contact, deadline, what to follow up…"
+                              onBlur={(e) => e.target.value !== a.notes && run(() => tracker.setNotes(a._id, e.target.value), "Could not save notes")}
+                              autoFocus
+                            />
+                          )}
+                          {a.notes && notesOpen !== a._id && <div className="prof-app-notes">{a.notes}</div>}
+                          <div className="prof-app-actions">
+                            {a.url && <a className="prof-role-link" href={a.url} target="_blank" rel="noreferrer">Posting</a>}
+                            <button className="prof-link-btn" onClick={() => setNotesOpen(notesOpen === a._id ? null : a._id)}>
+                              {notesOpen === a._id ? "Done" : "Notes"}
+                            </button>
+                            <button className="prof-link-btn" onClick={() => removeApp(a)}>Remove</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         )}
@@ -1214,6 +1312,23 @@ const CSS = `
 .prof-role-match { font-size: 12px; margin-top: 10px; line-height: 1.45; }
 .prof-role-link { display: inline-block; margin-top: 10px; font-size: 12px; font-weight: 600; color: var(--p2); text-decoration: none; }
 .prof-role-link:hover { text-decoration: underline; }
+
+/* TRACKER */
+.prof-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; align-items: start; }
+.prof-col { background: var(--s1); border: 1px solid var(--bd); border-radius: 14px; padding: 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.prof-col-head { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--tx2); }
+.prof-col-count { color: var(--p2); }
+.prof-app { background: var(--s2); border: 1px solid var(--bd); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.prof-app-title { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.prof-app-co { font-size: 12px; color: var(--tx2); }
+.prof-app .prof-badge { align-self: flex-start; }
+.prof-select { background: var(--s3); color: var(--tx); border: 1px solid var(--bd); border-radius: 8px; padding: 7px 8px; font-size: 12px; font-family: inherit; text-transform: capitalize; }
+.prof-notes { background: var(--s3); color: var(--tx); border: 1px solid var(--bd2); border-radius: 8px; padding: 8px; font-size: 12px; font-family: inherit; min-height: 64px; resize: vertical; }
+.prof-app-notes { font-size: 12px; color: var(--tx2); line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.prof-app-actions, .prof-role-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.prof-role-actions { margin-top: 10px; }
+.prof-role-actions .prof-role-link { margin-top: 0; }
+.prof-role-saved { font-size: 12px; font-weight: 600; color: var(--tl); }
 
 /* DROPZONE */
 .prof-drop {

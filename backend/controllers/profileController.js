@@ -1,5 +1,7 @@
 const User = require("../models/User");
 
+const gone = (res) => res.status(401).json({ message: "Account not found. Log in again." });
+
 const clean = (s, max = 80) => String(s || "").trim().slice(0, max);
 
 const publicProfile = (user) => {
@@ -21,7 +23,7 @@ const publicProfile = (user) => {
 const getProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user) return gone(res);
     res.json(publicProfile(user));
   } catch (err) {
     res.status(500).json({ message: "Could not load profile" });
@@ -34,6 +36,7 @@ const updateProfile = async (req, res) => {
     if (req.body.targetRole !== undefined) update.targetRole = clean(req.body.targetRole, 100);
     if (req.body.visaType !== undefined) update.visaType = clean(req.body.visaType, 60);
     const user = await User.findByIdAndUpdate(req.user.id, update, { new: true });
+    if (!user) return gone(res);
     res.json(publicProfile(user));
   } catch (err) {
     res.status(500).json({ message: "Could not update profile" });
@@ -57,6 +60,7 @@ const setSkills = async (req, res) => {
       });
     }
     const user = await User.findById(req.user.id);
+    if (!user) return gone(res);
     user.careerProfile.skills = skills;
     await user.save();
     res.json(publicProfile(user));
@@ -73,6 +77,7 @@ const saveGap = async (req, res) => {
       return res.status(400).json({ message: "Missing gap result" });
     }
     const user = await User.findById(req.user.id);
+    if (!user) return gone(res);
     const cp = user.careerProfile;
     const doneBefore = new Map((cp.plan || []).map((p) => [p.skill.toLowerCase(), p.done]));
     const resources = gap.learning_resources || {};
@@ -105,6 +110,7 @@ const setPlanItem = async (req, res) => {
     const skill = clean(req.body.skill);
     const done = !!req.body.done;
     const user = await User.findById(req.user.id);
+    if (!user) return gone(res);
     const cp = user.careerProfile;
     const item = (cp.plan || []).find((p) => p.skill.toLowerCase() === skill.toLowerCase());
     if (!item) return res.status(404).json({ message: "Skill not in plan" });
@@ -133,6 +139,7 @@ const saveAts = async (req, res) => {
       .filter(Boolean)
       .slice(0, 30);
     const user = await User.findById(req.user.id);
+    if (!user) return gone(res);
     user.careerProfile.ats = { score, missingKeywords: missing, at: new Date() };
     await user.save();
     res.json(publicProfile(user));

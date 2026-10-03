@@ -105,6 +105,7 @@ const uploadCV = async (req, res) => {
     // Step 3b — Save to the career profile. CV skills are replaced;
     // manual and learned skills are kept.
     const user = await User.findById(req.user.id);
+    if (!user) return res.status(401).json({ message: "Account not found. Log in again." });
     const kept = user.careerProfile.skills.filter((s) => s.source !== "cv");
     const keptNames = new Set(kept.map((s) => s.name.toLowerCase()));
     const cvSkills = skills
