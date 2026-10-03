@@ -20,9 +20,9 @@ const formatBytes = (b) => {
 };
 
 const scoreBand = (s) => {
-  if (s >= 60) return { label: "Strong match", text: "#1e7a55" };
-  if (s >= 30) return { label: "Getting there", text: "#8f7236" };
-  return { label: "Early days", text: "#a83a2e" };
+  if (s >= 60) return { label: "Strong match", text: "var(--c-ok)" };
+  if (s >= 30) return { label: "Getting there", text: "var(--c-brass)" };
+  return { label: "Early days", text: "var(--c-danger)" };
 };
 
 const initials = (name) => {
@@ -1436,7 +1436,7 @@ const CSS = `
   justify-content: center;
   font-size: 24px;
   font-weight: 800;
-  color: #f5f1e8;
+  color: var(--c-on-green);
 }
 
 .prof-header-info { flex: 1; }
@@ -1452,7 +1452,7 @@ const CSS = `
 }
 
 .prof-visa {
-  background: rgba(30,122,85,0.1);
+  background: rgba(var(--c-ok-rgb),0.1);
   color: var(--tl);
   padding: 4px 10px;
   border-radius: 6px;
@@ -1471,11 +1471,11 @@ const CSS = `
 }
 
 .prof-role-clickable:hover {
-  background: rgba(15,61,46,0.2);
+  background: rgba(var(--c-green-rgb),0.2);
 }
 
 .prof-role-input {
-  background: rgba(15,61,46,0.1);
+  background: rgba(var(--c-green-rgb),0.1);
   border: 1px solid var(--bd2);
   border-radius: 6px;
   color: var(--tx);
@@ -1517,12 +1517,12 @@ const CSS = `
 
 .prof-tab:hover {
   color: var(--tx);
-  background: rgba(15,61,46,0.1);
+  background: rgba(var(--c-green-rgb),0.1);
 }
 
 .prof-tab.is-active {
   color: var(--p2);
-  background: rgba(15,61,46,0.15);
+  background: rgba(var(--c-green-rgb),0.15);
   border-bottom: 2px solid var(--p2);
 }
 
@@ -1618,7 +1618,7 @@ const CSS = `
   border-radius: 12px;
   background: var(--c-green);
   border: none;
-  color: #f5f1e8;
+  color: var(--c-on-green);
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1639,7 +1639,7 @@ const CSS = `
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: rgba(15,61,46,0.2);
+  background: rgba(var(--c-green-rgb),0.2);
   border: 1px solid var(--bd2);
   border-radius: 20px;
   padding: 8px 12px;
@@ -1655,7 +1655,7 @@ const CSS = `
 }
 
 .prof-chip.is-manual {
-  border-color: rgba(143,114,54,0.3);
+  border-color: rgba(var(--c-brass-rgb),0.3);
   color: var(--mg);
 }
 
@@ -1685,7 +1685,7 @@ const CSS = `
 .prof-primary {
   background: var(--c-green);
   border: none;
-  color: #f5f1e8;
+  color: var(--c-on-green);
   padding: 12px 24px;
   border-radius: 12px;
   font-weight: 700;
@@ -1736,8 +1736,8 @@ const CSS = `
 .prof-next strong { color: var(--tx); font-weight: 600; }
 .prof-checks { display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; }
 .prof-check { display: flex; align-items: center; gap: 14px; background: var(--s2); border: 1px solid var(--bd); border-radius: 14px; padding: 14px 16px; }
-.prof-check.is-done { border-color: rgba(30,122,85,0.25); }
-.prof-check-dot { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--tx3); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #f5f1e8; }
+.prof-check.is-done { border-color: rgba(var(--c-ok-rgb),0.25); }
+.prof-check-dot { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--tx3); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--c-on-green); }
 .prof-check.is-done .prof-check-dot { background: var(--tl); border-color: var(--tl); }
 .prof-check-body { flex: 1; min-width: 0; }
 .prof-check-title { font-size: 14px; font-weight: 600; }
@@ -1749,14 +1749,14 @@ const CSS = `
 .prof-skill-main { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .prof-skill-name { font-size: 14px; font-weight: 600; }
 .prof-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 3px 8px; border-radius: 99px; }
-.prof-badge--cv { background: rgba(15,61,46,0.15); color: var(--p2); }
-.prof-badge--manual { background: rgba(143,114,54,0.14); color: var(--gold); }
-.prof-badge--learned { background: rgba(30,122,85,0.14); color: var(--tl); }
+.prof-badge--cv { background: rgba(var(--c-green-rgb),0.15); color: var(--p2); }
+.prof-badge--manual { background: rgba(var(--c-brass-rgb),0.14); color: var(--gold); }
+.prof-badge--learned { background: rgba(var(--c-ok-rgb),0.14); color: var(--tl); }
 .prof-skill-ev { font-size: 12px; color: var(--tx2); margin-top: 6px; line-height: 1.45; overflow-wrap: anywhere; }
 .prof-skill-x { position: absolute; top: 12px; right: 12px; }
 
 /* GAP */
-.prof-warn { font-size: 13px; color: var(--gold); background: rgba(143,114,54,0.08); border: 1px solid rgba(143,114,54,0.25); padding: 10px 14px; border-radius: 12px; margin: 0 0 16px; }
+.prof-warn { font-size: 13px; color: var(--gold); background: rgba(var(--c-brass-rgb),0.08); border: 1px solid rgba(var(--c-brass-rgb),0.25); padding: 10px 14px; border-radius: 12px; margin: 0 0 16px; }
 .prof-gap-top { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; margin-bottom: 8px; }
 .prof-gap-top .prof-gauge { margin: 0; flex-shrink: 0; }
 .prof-gap-sum { flex: 1; min-width: 220px; }
@@ -1767,14 +1767,14 @@ const CSS = `
 .prof-block-title span { color: var(--p2); margin-left: 6px; }
 .prof-tags, .prof-gaps { display: flex; flex-wrap: wrap; gap: 8px; }
 .prof-tag { display: inline-flex; align-items: center; gap: 5px; padding: 7px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }
-.prof-tag--good { background: rgba(30,122,85,0.12); color: var(--tl); }
-.prof-gap { background: rgba(168,58,46,0.15); color: var(--red); padding: 8px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+.prof-tag--good { background: rgba(var(--c-ok-rgb),0.12); color: var(--tl); }
+.prof-gap { background: rgba(var(--c-danger-rgb),0.15); color: var(--red); padding: 8px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }
 
 .prof-plan { display: flex; flex-direction: column; gap: 8px; }
 .prof-plan-item { display: flex; gap: 12px; align-items: flex-start; background: var(--s2); border: 1px solid var(--bd); border-radius: 12px; padding: 12px 14px; }
 .prof-plan-item.is-done { opacity: 0.6; }
 .prof-plan-item.is-done .prof-plan-skill { text-decoration: line-through; }
-.prof-plan-box { width: 22px; height: 22px; border-radius: 6px; border: 1.5px solid var(--tx3); background: transparent; color: #f5f1e8; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; padding: 0; }
+.prof-plan-box { width: 22px; height: 22px; border-radius: 6px; border: 1.5px solid var(--tx3); background: transparent; color: var(--c-on-green); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; padding: 0; }
 .prof-plan-item.is-done .prof-plan-box { background: var(--tl); border-color: var(--tl); }
 .prof-plan-skill { font-size: 14px; font-weight: 600; }
 .prof-plan-res { font-size: 12px; color: var(--tx2); margin-top: 3px; }
@@ -1818,7 +1818,7 @@ const CSS = `
 .prof-details { display: flex; flex-direction: column; gap: 16px; }
 .prof-field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--tx2); }
 .prof-tag--btn { border: none; cursor: pointer; background: var(--s2); color: var(--tx2); font-family: inherit; }
-.prof-tag--btn.prof-tag--good { background: rgba(30,122,85,0.12); color: var(--tl); }
+.prof-tag--btn.prof-tag--good { background: rgba(var(--c-ok-rgb),0.12); color: var(--tl); }
 .prof-danger { color: var(--red); }
 .prof-delete { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
 .prof-delete .prof-input { flex: 1; min-width: 200px; }
@@ -1842,7 +1842,7 @@ const CSS = `
 
 /* DROPZONE */
 .prof-drop {
-  border: 1.5px dashed rgba(15,61,46,0.2);
+  border: 1.5px dashed rgba(var(--c-green-rgb),0.2);
   border-radius: 14px;
   padding: clamp(20px, 3vw, 28px) 16px;
   text-align: center;
@@ -1853,12 +1853,12 @@ const CSS = `
 
 .prof-drop:hover {
   border-color: var(--bd2);
-  background: rgba(15,61,46,0.05);
+  background: rgba(var(--c-green-rgb),0.05);
 }
 
 .prof-drop.is-drag {
   border-color: var(--p2);
-  background: rgba(15,61,46,0.1);
+  background: rgba(var(--c-green-rgb),0.1);
 }
 
 .prof-drop-ic {
@@ -1927,8 +1927,8 @@ const CSS = `
 }
 
 .prof-file--done {
-  background: rgba(30,122,85,0.08);
-  border: 1px solid rgba(30,122,85,0.2);
+  background: rgba(var(--c-ok-rgb),0.08);
+  border: 1px solid rgba(var(--c-ok-rgb),0.2);
   border-radius: 12px;
   padding: 12px 16px;
   display: flex;
@@ -1964,7 +1964,7 @@ const CSS = `
 }
 
 .prof-link-btn:hover {
-  background: rgba(15,61,46,0.2);
+  background: rgba(var(--c-green-rgb),0.2);
 }
 
 /* TOAST */
@@ -1985,14 +1985,14 @@ const CSS = `
 }
 
 .prof-toast--success {
-  background: rgba(30,122,85,0.2);
-  border: 1px solid rgba(30,122,85,0.3);
+  background: rgba(var(--c-ok-rgb),0.2);
+  border: 1px solid rgba(var(--c-ok-rgb),0.3);
   color: var(--tl);
 }
 
 .prof-toast--error {
-  background: rgba(168,58,46,0.2);
-  border: 1px solid rgba(168,58,46,0.3);
+  background: rgba(var(--c-danger-rgb),0.2);
+  border: 1px solid rgba(var(--c-danger-rgb),0.3);
   color: var(--red);
 }
 

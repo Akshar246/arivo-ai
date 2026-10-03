@@ -30,6 +30,17 @@
   --c-warn-soft: #f6ebd2;
   --c-danger: #a83a2e;
   --c-danger-soft: #f6e1dd;
+  --c-on-green: #f5f1e8;
+  --c-brand: #0f3d2e;
+  --c-danger-line: #e3b8b1;
+  --c-warn-line: #e6d3a3;
+  --c-placeholder: #9a9f97;
+  --c-ink-rgb: 21, 35, 28;
+  --c-green-rgb: 15, 61, 46;
+  --c-ok-rgb: 30, 122, 85;
+  --c-danger-rgb: 168, 58, 46;
+  --c-brass-rgb: 143, 114, 54;
+  color-scheme: light;
 
   --radius: 10px;
   --radius-lg: 16px;
@@ -107,7 +118,7 @@ body {
 }
 .ivory .iv-btn--primary {
   background: var(--c-green);
-  color: #f5f1e8;
+  color: var(--c-on-green);
 }
 .ivory .iv-btn--primary:hover:not(:disabled) {
   background: var(--c-green-2);
@@ -165,6 +176,77 @@ body {
   background: var(--c-green-soft);
   border-color: var(--c-green);
   color: var(--c-green);
+}
+
+
+/* ── Dark theme: the same palette, deepened ─────────────────── */
+:root[data-theme="dark"],
+:root[data-theme="dark"] .ivory {
+  --c-bg: #0f1512;
+  --c-surface: #161e19;
+  --c-surface-2: #1b2520;
+  --c-ink: #efead9;
+  --c-ink-2: #b4bdb3;
+  --c-ink-3: #8c978e;
+  --c-line: #26332b;
+  --c-line-2: #364639;
+  --c-green: #6dc29a;
+  --c-green-2: #86d1ae;
+  --c-green-soft: #1c2f25;
+  --c-brass: #d4b66f;
+  --c-brass-soft: #2c2616;
+  --c-ok: #5fc795;
+  --c-ok-soft: #183024;
+  --c-warn: #d9ad5c;
+  --c-warn-soft: #2e2514;
+  --c-danger: #ee8a7c;
+  --c-danger-soft: #33201d;
+  --c-on-green: #0b1410;
+  --c-brand: #12261e;
+  --c-danger-line: #5a312b;
+  --c-warn-line: #5a4a22;
+  --c-placeholder: #6f7a72;
+  --c-ink-rgb: 239, 234, 217;
+  --c-green-rgb: 109, 194, 154;
+  --c-ok-rgb: 95, 199, 149;
+  --c-danger-rgb: 238, 138, 124;
+  --c-brass-rgb: 212, 182, 111;
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.3);
+  color-scheme: dark;
+}
+
+/* ── Theme toggle ───────────────────────────────────────────── */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid var(--c-line-2);
+  background: transparent;
+  color: var(--c-ink-2);
+  cursor: pointer;
+  transition: border-color var(--t) var(--ease), color var(--t) var(--ease);
+}
+.theme-toggle:hover {
+  color: var(--c-ink);
+  border-color: var(--c-ink);
+}
+.theme-toggle svg {
+  width: 17px;
+  height: 17px;
+}
+.nb-theme-mobile {
+  display: none;
+}
+@media (max-width: 768px) {
+  .nb-theme-mobile {
+    display: inline-flex;
+    margin-left: auto;
+    margin-right: 8px;
+  }
 }
 
 /* ── App navigation, ivory variant ──────────────────────────── */

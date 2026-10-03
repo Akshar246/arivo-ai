@@ -228,7 +228,7 @@ const CSS = `
 .jd-card { padding: clamp(20px, 4vw, 32px); margin-bottom: 20px; }
 .jd-card h2, .jd-similar h2 { font-size: 1.7rem; font-weight: 400; margin: 0 0 14px; }
 .jd-muted { color: var(--c-ink-2); font-size: 0.92rem; line-height: 1.6; margin: 0 0 12px; }
-.jd-warn { font-size: 0.88rem; color: var(--c-warn); background: var(--c-warn-soft); border: 1px solid #e6d3a3; border-radius: var(--radius); padding: 11px 14px; margin: 0 0 16px; line-height: 1.55; }
+.jd-warn { font-size: 0.88rem; color: var(--c-warn); background: var(--c-warn-soft); border: 1px solid var(--c-warn-line); border-radius: var(--radius); padding: 11px 14px; margin: 0 0 16px; line-height: 1.55; }
 .jd-warn a { color: inherit; font-weight: 700; }
 .jd-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .jd-chip { font-size: 0.8rem; font-weight: 600; padding: 6px 12px; border-radius: 999px; background: var(--c-green-soft); color: var(--c-green); }

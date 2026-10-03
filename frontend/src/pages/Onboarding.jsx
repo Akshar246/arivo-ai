@@ -191,9 +191,9 @@ const CSS = `
 .ob-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .ob-chip { background: var(--c-surface); border: 1px solid var(--c-line-2); border-radius: 999px; padding: 7px 14px; font: 500 0.8rem var(--font-body); color: var(--c-ink-2); cursor: pointer; transition: border-color var(--t) var(--ease), color var(--t) var(--ease); }
 .ob-chip:hover { border-color: var(--c-green); color: var(--c-ink); }
-.ob-error { margin-top: 16px; font-size: 0.85rem; color: var(--c-danger); background: var(--c-danger-soft); border: 1px solid #e3b8b1; border-radius: var(--radius); padding: 10px 14px; }
+.ob-error { margin-top: 16px; font-size: 0.85rem; color: var(--c-danger); background: var(--c-danger-soft); border: 1px solid var(--c-danger-line); border-radius: var(--radius); padding: 10px 14px; }
 .ob-actions { display: flex; align-items: center; justify-content: space-between; margin-top: 30px; }
-.ob-primary { background: var(--c-green); border: none; color: #f5f1e8; font: 600 0.95rem var(--font-body); padding: 12px 28px; border-radius: var(--radius); cursor: pointer; transition: background var(--t) var(--ease); }
+.ob-primary { background: var(--c-green); border: none; color: var(--c-on-green); font: 600 0.95rem var(--font-body); padding: 12px 28px; border-radius: var(--radius); cursor: pointer; transition: background var(--t) var(--ease); }
 .ob-primary:hover:not(:disabled) { background: var(--c-green-2); }
 .ob-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 .ob-ghost { background: none; border: 1px solid var(--c-line-2); color: var(--c-ink); padding: 11px 22px; border-radius: var(--radius); cursor: pointer; font: 500 0.9rem var(--font-body); transition: border-color var(--t) var(--ease); }

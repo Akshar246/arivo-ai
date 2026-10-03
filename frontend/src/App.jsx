@@ -5,6 +5,7 @@ import Dashboard from "./pages/Dashboard";
 import Jobs from "./pages/Jobs";
 import Profile from "./pages/Profile";
 import Onboarding from "./pages/Onboarding";
+import ThemeToggle from "./components/ThemeToggle";
 import Chat from "./components/Chat";
 import Landing from "./pages/Landing";
 import ATS from "./pages/ATS";
@@ -50,12 +51,15 @@ function NavBar({ page, setPage }) {
                 {item.label}
               </button>
             ))}
+            <ThemeToggle />
             <div className="nb-divider" />
             <button className="nb-logout" onClick={logout} title="Log out">
               <IconLogout />
               Log out
             </button>
           </div>
+
+          <ThemeToggle className="nb-theme-mobile" />
 
           {/* Mobile — logo + icon-only logout, primary nav lives in the bottom bar */}
           <button

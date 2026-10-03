@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
+import ThemeToggle from "../components/ThemeToggle";
 
 // ─────────────────────────────────────────────────────────────
 // PREMIUM AUTHENTICATION · Arivo AI (V2 Architecture)
@@ -399,6 +400,7 @@ export default function Login({ onLogin }) {
 
       {/* ── RIGHT PANEL: Form Container ──────────────────────── */}
       <main className="form-panel">
+        <div className="auth-theme"><ThemeToggle /></div>
         <div className="form-container fade-up">
           <div className="mobile-brand">Arivo AI</div>
 
@@ -557,7 +559,7 @@ const styles = `
 @keyframes authFade { from { opacity: 0; } to { opacity: 1; } }
 
 /* Brand panel */
-.brand-panel { display: flex; flex-direction: column; justify-content: center; padding: 4rem; background: var(--c-green); color: #f5f1e8; }
+.brand-panel { display: flex; flex-direction: column; justify-content: center; padding: 4rem; background: var(--c-brand); color: #f5f1e8; }
 .brand-content { max-width: 500px; margin: 0 auto; width: 100%; }
 .brand-logo { font-family: var(--font-display); font-size: 2rem; letter-spacing: -0.01em; margin-bottom: 4rem; }
 .brand-headline { font-family: var(--font-display); font-weight: 400; font-size: clamp(2.6rem, 4.4vw, 3.9rem); line-height: 1.04; letter-spacing: -0.02em; margin: 0 0 1.5rem; }
@@ -585,7 +587,7 @@ const styles = `
 .tab-switcher button { flex: 1; background: transparent; border: none; padding: 12px; color: var(--c-ink-3); font: 600 0.92rem var(--font-body); cursor: pointer; transition: color var(--t) var(--ease); }
 .tab-switcher button.active { color: var(--c-ink); }
 
-.error-banner { display: flex; align-items: center; gap: 10px; background: var(--c-danger-soft); border: 1px solid #e3b8b1; color: var(--c-danger); padding: 11px 14px; border-radius: var(--radius); font-size: 0.9rem; margin-bottom: 20px; }
+.error-banner { display: flex; align-items: center; gap: 10px; background: var(--c-danger-soft); border: 1px solid var(--c-danger-line); color: var(--c-danger); padding: 11px 14px; border-radius: var(--radius); font-size: 0.9rem; margin-bottom: 20px; }
 .error-icon svg { width: 17px; height: 17px; }
 
 .fields-stack { display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px; }
@@ -596,7 +598,7 @@ const styles = `
 .input-icon svg { width: 16px; height: 16px; color: var(--c-ink-3); display: block; }
 .input-wrapper:focus-within .input-icon svg { color: var(--c-green); }
 .input-element { flex: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--c-ink); font: 400 0.97rem var(--font-body); padding: 13px 0; }
-.input-element::placeholder { color: #9a9f97; }
+.input-element::placeholder { color: var(--c-placeholder); }
 .input-trailing { display: flex; align-items: center; gap: 8px; }
 .valid-check svg { width: 16px; height: 16px; color: var(--c-ok); }
 .btn-icon { background: none; border: none; color: var(--c-ink-3); cursor: pointer; display: flex; align-items: center; padding: 4px; transition: color var(--t) var(--ease); }
@@ -608,7 +610,7 @@ const styles = `
 .strength-bars { display: flex; gap: 6px; flex: 1; }
 .s-bar { flex: 1; height: 3px; border-radius: 99px; background: var(--c-line); transition: background var(--t) var(--ease); }
 .active-s1 { background: var(--c-danger); }
-.active-s2 { background: #b98a2a; }
+.active-s2 { background: var(--c-warn); }
 .active-s3 { background: var(--c-ok); }
 .s-label { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; min-width: 48px; text-align: right; }
 .s-label.s0, .s-label.s1 { color: var(--c-danger); } .s-label.s2 { color: var(--c-warn); } .s-label.s3 { color: var(--c-ok); }
@@ -616,11 +618,13 @@ const styles = `
 .remember-row input { width: 16px; height: 16px; accent-color: var(--c-green); cursor: pointer; }
 .privacy-note { display: flex; align-items: flex-start; gap: 8px; font-size: 0.78rem; line-height: 1.5; color: var(--c-ink-3); margin: 0; }
 .privacy-note svg { width: 13px; height: 13px; flex-shrink: 0; margin-top: 2px; }
-.btn-submit { width: 100%; padding: 14px; border: none; border-radius: var(--radius); background: var(--c-green); color: #f5f1e8; font: 600 0.98rem var(--font-body); cursor: pointer; transition: background var(--t) var(--ease); }
+.btn-submit { width: 100%; padding: 14px; border: none; border-radius: var(--radius); background: var(--c-green); color: var(--c-on-green); font: 600 0.98rem var(--font-body); cursor: pointer; transition: background var(--t) var(--ease); }
 .btn-submit:hover:not(:disabled) { background: var(--c-green-2); }
 .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; }
 .btn-loading { display: flex; align-items: center; justify-content: center; gap: 10px; }
-.spinner { width: 16px; height: 16px; border: 2px solid rgba(245, 241, 232, 0.35); border-top-color: #f5f1e8; border-radius: 50%; animation: spin 0.8s linear infinite; }
+.spinner { width: 16px; height: 16px; border: 2px solid rgba(var(--c-ink-rgb), 0.25); border-top-color: var(--c-on-green); border-radius: 50%; animation: spin 0.8s linear infinite; }
 
 @media (max-width: 960px) { .auth-layout { grid-template-columns: 1fr; } .brand-panel { display: none; } .mobile-brand { display: block; } .form-panel { align-items: flex-start; padding: 2rem 1.25rem; } }
+.form-panel { position: relative; }
+.auth-theme { position: absolute; top: 20px; right: 20px; }
 `;

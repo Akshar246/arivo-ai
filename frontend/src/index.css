@@ -8,19 +8,19 @@
 }
 
 :root {
-  --bg: #f5f1e8;
-  --bg2: #fffdf8;
-  --bg3: #faf6ec;
-  --border: #e2dccd;
-  --border2: #cfc7b4;
-  --primary: #0f3d2e;
-  --primary2: #14503c;
-  --green: #1e7a55;
-  --gold: #8f7236;
-  --red: #a83a2e;
-  --text1: #15231c;
-  --text2: #4f5b54;
-  --text3: #66706a;
+  --bg: var(--c-bg);
+  --bg2: var(--c-surface);
+  --bg3: var(--c-surface-2);
+  --border: var(--c-line);
+  --border2: var(--c-line-2);
+  --primary: var(--c-green);
+  --primary2: var(--c-green-2);
+  --green: var(--c-ok);
+  --gold: var(--c-brass);
+  --red: var(--c-danger);
+  --text1: var(--c-ink);
+  --text2: var(--c-ink-2);
+  --text3: var(--c-ink-3);
 }
 
 html {
@@ -52,8 +52,8 @@ body {
 
 /* Selection */
 ::selection {
-  background: #e4eee7;
-  color: #0f3d2e;
+  background: var(--c-green-soft);
+  color: var(--c-green);
 }
 
 /* Animations */
@@ -210,8 +210,8 @@ body {
   align-items: center;
   gap: 4px;
   padding: 3px 10px;
-  background: rgba(30, 122, 85, 0.1);
-  border: 1px solid rgba(30, 122, 85, 0.25);
+  background: rgba(var(--c-ok-rgb), 0.1);
+  border: 1px solid rgba(var(--c-ok-rgb), 0.25);
   border-radius: 999px;
   color: var(--green);
   font-size: 11px;
@@ -220,8 +220,8 @@ body {
 
 .badge-purple {
   padding: 3px 10px;
-  background: rgba(15, 61, 46, 0.1);
-  border: 1px solid rgba(15, 61, 46, 0.25);
+  background: rgba(var(--c-green-rgb), 0.1);
+  border: 1px solid rgba(var(--c-green-rgb), 0.25);
   border-radius: 999px;
   color: var(--primary);
   font-size: 11px;
