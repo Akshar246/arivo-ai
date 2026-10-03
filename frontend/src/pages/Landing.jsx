@@ -1,15 +1,7 @@
-import { useState, useEffect, useRef } from "react";
-
-const SAMPLE_JOBS = [
-  { title: "Senior Software Engineer", company: "DeepMind", salary: "£85-95k", location: "London", sponsor: true },
-  { title: "Machine Learning Engineer", company: "Monzo", salary: "£75-90k", location: "London", sponsor: true },
-  { title: "Data Scientist", company: "Revolut", salary: "£80-100k", location: "London", sponsor: true }
-];
-
 const TOOLS = [
   {
     title: "Sponsor Verification",
-    desc: "Every company checked live against the UK Home Office register (120,000+ sponsors). Know who actually sponsors before you apply."
+    desc: "Employers are checked against the Home Office register of licensed sponsors, so you can see who is on it before you apply."
   },
   {
     title: "ATS Readiness Analyzer",
@@ -28,7 +20,7 @@ const TOOLS = [
 const WHY_ARIVO = [
   {
     problem: "Wasted applications",
-    solution: "Most UK jobs aren't open to international hires. We filter to sponsored roles only—so you apply to opportunities that exist."
+    solution: "Many employers can't sponsor a visa. We flag the ones on the sponsor register, so you can put your effort where it counts."
   },
   {
     problem: "CV rejection uncertainty",
@@ -40,37 +32,13 @@ const WHY_ARIVO = [
   }
 ];
 
-function Reveal({ children, delay = 0, className = "" }) {
-  const [seen, setSeen] = useState(false);
-  const ref = useRef(null);
-
-  useEffect(() => {
-    const ob = new IntersectionObserver(
-      ([e]) => e.isIntersecting && (setSeen(true), ob.disconnect()),
-      { threshold: 0.15 }
-    );
-    if (ref.current) ob.observe(ref.current);
-    return () => ob.disconnect();
-  }, []);
-
-  return (
-    <div
-      ref={ref}
-      className={`${className} reveal-wrap`}
-      style={{
-        opacity: seen ? 1 : 0,
-        transform: seen ? "translateY(0)" : "translateY(20px)",
-        transitionDelay: `${delay}s`,
-      }}
-    >
-      {children}
-    </div>
-  );
+function Reveal({ children, className = "" }) {
+  return <div className={className}>{children}</div>;
 }
 
 export default function Landing({ onGetStarted }) {
   return (
-    <div className="landing">
+    <div className="landing ivory">
       <style>{styles}</style>
 
       {/* Nav */}
@@ -91,7 +59,7 @@ export default function Landing({ onGetStarted }) {
             <h1 className="hero-title">Find Jobs from Companies That Actually Sponsor Visas</h1>
           </Reveal>
           <Reveal delay={0.2}>
-            <p className="hero-desc">Stop applying to roles that don't sponsor. Every job verified against the UK Home Office register in real time. Built by an international student. Built for you.</p>
+            <p className="hero-desc">Stop applying blind. Employers are checked against the UK Home Office register of licensed sponsors. Built by an international student, for international students.</p>
           </Reveal>
           <Reveal delay={0.3}>
             <button onClick={onGetStarted} className="btn-hero">Explore Opportunities →</button>
@@ -99,12 +67,12 @@ export default function Landing({ onGetStarted }) {
         </div>
         <Reveal delay={0.4} className="hero-stats">
           <div className="stat">
-            <div className="stat-num">120k+</div>
-            <div className="stat-txt">Sponsors Verified Live</div>
+            <div className="stat-num">Official</div>
+            <div className="stat-txt">Home Office sponsor list</div>
           </div>
           <div className="stat">
-            <div className="stat-num">Real-time</div>
-            <div className="stat-txt">Market Data</div>
+            <div className="stat-num">Live</div>
+            <div className="stat-txt">Reed and Adzuna postings</div>
           </div>
           <div className="stat">
             <div className="stat-num">Free</div>
@@ -121,7 +89,7 @@ export default function Landing({ onGetStarted }) {
         <div className="problem-grid">
           <Reveal delay={0.1} className="problem-card">
             <h3>No visa sponsorship filter</h3>
-            <p>Job boards show all roles. 94% don't sponsor international hires. You apply blindly and get rejected or ghosted—wasting weeks with no feedback on why.</p>
+            <p>Job boards show every role, whether or not the employer can sponsor a visa. You apply blindly, get rejected or ghosted, and never learn why.</p>
           </Reveal>
           <Reveal delay={0.2} className="problem-card">
             <h3>Your CV gets silently rejected</h3>
@@ -167,31 +135,6 @@ export default function Landing({ onGetStarted }) {
         </div>
       </section>
 
-      {/* Sample Jobs */}
-      <section className="jobs">
-        <Reveal>
-          <h2>Sample Roles from Verified Sponsors</h2>
-          <p className="jobs-desc">Real opportunities from companies on the UK Home Office sponsor register. Sign in to see roles matched to your skills.</p>
-        </Reveal>
-        <div className="jobs-grid">
-          {SAMPLE_JOBS.map((job, idx) => (
-            <Reveal key={idx} delay={0.1 * idx} className="job-card">
-              <div className="job-header">
-                <div>
-                  <h4 className="job-title">{job.title}</h4>
-                  <p className="job-company">{job.company}</p>
-                </div>
-                <span className="badge">✓ Verified Sponsor</span>
-              </div>
-              <div className="job-details">
-                <span className="job-salary">{job.salary}</span>
-                <span className="job-location">{job.location}</span>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-      </section>
-
       {/* How It Works */}
       <section className="how">
         <Reveal>
@@ -206,7 +149,7 @@ export default function Landing({ onGetStarted }) {
           <Reveal delay={0.2} className="how-card">
             <div className="step">2</div>
             <h3>Get Job Matches + CV Feedback</h3>
-            <p>Browse AI-matched roles from verified sponsors. Get ATS readiness score on your CV to fix formatting issues before applying.</p>
+            <p>Browse roles from employers on the sponsor register. Check your CV against a job description to fix formatting and keyword gaps before applying.</p>
           </Reveal>
           <Reveal delay={0.3} className="how-card">
             <div className="step">3</div>
@@ -219,22 +162,8 @@ export default function Landing({ onGetStarted }) {
       {/* Trust */}
       <section className="trust">
         <Reveal>
-          <h2>Built on Real Data</h2>
-          <p>Every company on our platform is verified against the UK Home Office's official Skilled Worker sponsor register, updated live.</p>
-        </Reveal>
-        <Reveal delay={0.1} className="trust-stats">
-          <div className="trust-stat">
-            <div className="trust-num">120,000+</div>
-            <div className="trust-label">Verified Companies</div>
-          </div>
-          <div className="trust-stat">
-            <div className="trust-num">Live</div>
-            <div className="trust-label">Data Updates Daily</div>
-          </div>
-          <div className="trust-stat">
-            <div className="trust-num">100%</div>
-            <div className="trust-label">Real Market Data</div>
-          </div>
+          <h2>Where the data comes from</h2>
+          <p>We match each employer against the Home Office's published register of licensed Skilled Worker sponsors, and pull job postings from Reed and Adzuna. Being on the register doesn't mean every role is sponsored, so always confirm with the employer.</p>
         </Reveal>
       </section>
 
@@ -250,7 +179,7 @@ export default function Landing({ onGetStarted }) {
           </Reveal>
           <Reveal delay={0.2} className="faq-item">
             <h4>How do you verify sponsorship?</h4>
-            <p>We cross-check every company against the UK Home Office's official Skilled Worker register. It's updated daily from government data—the same list employers are on.</p>
+            <p>We match each employer's name against the Home Office's published Skilled Worker sponsor register. Names can differ slightly between sources, so a missing match isn't proof that an employer can't sponsor.</p>
           </Reveal>
           <Reveal delay={0.3} className="faq-item">
             <h4>Why build this?</h4>
@@ -290,155 +219,48 @@ export default function Landing({ onGetStarted }) {
 }
 
 const styles = `
-* { box-sizing: border-box; }
+* {box-sizing:border-box;}
 
-.landing {
-  background: linear-gradient(135deg, #030305 0%, #0a0810 100%);
-  color: #d0d0d0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  min-height: 100vh;
-  position: relative;
-  line-height: 1.6;
-}
+.landing {background:var(--c-surface-2);color:var(--c-ink);font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;min-height:100vh;position:relative;line-height:1.6;}
 
-.reveal-wrap {
-  transition: opacity 0.8s ease, transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);
-}
+.reveal-wrap {transition:opacity 0.8s ease, transform 0.8s cubic-bezier(0.2, 0.8, 0.2, 1);}
 
 /* NAV */
-.nav {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 100;
-  background: rgba(3, 3, 5, 0.7);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(200, 100, 255, 0.1);
-}
+.nav {position:fixed;top:0;left:0;right:0;z-index:100;background:var(--c-bg);border-bottom:1px solid var(--c-line);}
 
-.nav-inner {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 1rem 2rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
+.nav-inner {max-width:1200px;margin:0 auto;padding:1rem 2rem;display:flex;justify-content:space-between;align-items:center;}
 
-.logo {
-  font-size: 1.2rem;
-  font-weight: 800;
-  color: #fff;
-}
+.logo {font-size:1.2rem;font-weight:800;color:var(--c-ink);}
 
-.btn-nav {
-  background: rgba(200, 100, 255, 0.1);
-  border: 1px solid rgba(200, 100, 255, 0.3);
-  color: #e0e0e0;
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
+.btn-nav {background:rgba(15,61,46,0.1);border:1px solid rgba(15,61,46,0.3);color:var(--c-ink);padding:8px 16px;border-radius:6px;font-size:0.9rem;font-weight:600;cursor:pointer;transition:all 0.3s ease;}
 
-.btn-nav:hover {
-  background: rgba(200, 100, 255, 0.2);
-  border-color: rgba(200, 100, 255, 0.5);
-}
+.btn-nav:hover {background:rgba(15,61,46,0.2);border-color:rgba(15,61,46,0.5);}
 
 /* HERO */
-.hero {
-  padding: 8rem 2rem 5rem;
-  max-width: 1100px;
-  margin: 0 auto;
-}
+.hero {padding:8rem 2rem 5rem;max-width:1100px;margin:0 auto;}
 
-.hero-content {
-  margin-bottom: 4rem;
-}
+.hero-content {margin-bottom:4rem;}
 
-.hero-label {
-  font-size: 0.85rem;
-  color: #c864ff;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  margin: 0 0 1rem;
-  font-weight: 600;
-}
+.hero-label {font-size:0.85rem;color:var(--c-green);text-transform:uppercase;letter-spacing:0.1em;margin:0 0 1rem;font-weight:600;}
 
-.hero-title {
-  font-size: clamp(2.5rem, 6vw, 3.8rem);
-  font-weight: 700;
-  line-height: 1.2;
-  margin: 0 0 1.5rem;
-  color: #fff;
-}
+.hero-title {font-size:clamp(2.5rem, 6vw, 3.8rem);font-weight:700;line-height:1.2;margin:0 0 1.5rem;color:var(--c-ink);}
 
-.hero-desc {
-  font-size: 1.1rem;
-  color: #a0a0a0;
-  margin: 0 0 2rem;
-  line-height: 1.7;
-  max-width: 700px;
-}
+.hero-desc {font-size:1.1rem;color:var(--c-ink-2);margin:0 0 2rem;line-height:1.7;max-width:700px;}
 
-.btn-hero {
-  background: linear-gradient(135deg, #c864ff 0%, #ff00ff 100%);
-  border: none;
-  color: #030305;
-  padding: 14px 32px;
-  border-radius: 8px;
-  font-size: 1rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: 0 8px 32px rgba(200, 100, 255, 0.3);
-}
+.btn-hero {background:var(--c-green);border:none;color:#f5f1e8;padding:14px 32px;border-radius:8px;font-size:1rem;font-weight:600;cursor:pointer;transition:all 0.3s ease;box-shadow:none;}
 
-.btn-hero:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 48px rgba(200, 100, 255, 0.4);
-}
+.btn-hero:hover {box-shadow:none;}
 
-.hero-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: 2rem;
-  padding: 2.5rem;
-  background: rgba(200, 100, 255, 0.05);
-  border: 1px solid rgba(200, 100, 255, 0.1);
-  border-radius: 12px;
-  backdrop-filter: blur(10px);
-}
+.hero-stats {display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:2rem;padding:2.5rem;background:rgba(15,61,46,0.05);border:1px solid rgba(15,61,46,0.1);border-radius:12px;}
 
-.stat {
-  text-align: center;
-}
+.stat {text-align:center;}
 
-.stat-num {
-  font-size: 2.2rem;
-  font-weight: 700;
-  color: #c864ff;
-  margin-bottom: 0.5rem;
-}
+.stat-num {font-size:2.2rem;font-weight:700;color:var(--c-green);margin-bottom:0.5rem;}
 
-.stat-txt {
-  font-size: 0.85rem;
-  color: #888;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
+.stat-txt {font-size:0.85rem;color:var(--c-ink-2);text-transform:uppercase;letter-spacing:0.05em;}
 
 /* PROBLEM */
-.problem {
-  padding: 5rem 2rem;
-  max-width: 1100px;
-  margin: 0 auto;
-  background: linear-gradient(180deg, rgba(200, 100, 255, 0.02) 0%, transparent 100%);
-}
+.problem {padding:5rem 2rem;max-width:1100px;margin:0 auto;background:var(--c-surface-2);}
 
 .problem h2,
 .why h2,
@@ -447,415 +269,131 @@ const styles = `
 .how h2,
 .trust h2,
 .faq h2,
-.cta h2 {
-  font-size: 2.2rem;
-  font-weight: 700;
-  margin: 0 0 3rem;
-  text-align: center;
-  color: #fff;
-}
+.cta h2 {font-size:2.2rem;font-weight:700;margin:0 0 3rem;text-align:center;color:var(--c-ink);}
 
-.problem-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 2rem;
-}
+.problem-grid {display:grid;grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));gap:2rem;}
 
-.problem-card {
-  padding: 2rem;
-  background: rgba(200, 100, 255, 0.05);
-  border: 1px solid rgba(200, 100, 255, 0.1);
-  border-radius: 10px;
-  backdrop-filter: blur(10px);
-}
+.problem-card {padding:2rem;background:rgba(15,61,46,0.05);border:1px solid rgba(15,61,46,0.1);border-radius:10px;}
 
-.problem-card h3 {
-  font-size: 1.15rem;
-  margin: 0 0 1rem;
-  color: #fff;
-}
+.problem-card h3 {font-size:1.15rem;margin:0 0 1rem;color:var(--c-ink);}
 
-.problem-card p {
-  font-size: 0.95rem;
-  color: #a0a0a0;
-  margin: 0;
-  line-height: 1.6;
-}
+.problem-card p {font-size:0.95rem;color:var(--c-ink-2);margin:0;line-height:1.6;}
 
 /* WHY */
-.why {
-  padding: 5rem 2rem;
-  max-width: 1000px;
-  margin: 0 auto;
-}
+.why {padding:5rem 2rem;max-width:1000px;margin:0 auto;}
 
-.why-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 2rem;
-}
+.why-grid {display:grid;grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));gap:2rem;}
 
-.why-card {
-  display: block;
-}
+.why-card {display:block;}
 
-.why-card > div {
-  padding: 2rem;
-  background: rgba(200, 100, 255, 0.06);
-  border: 1px solid rgba(200, 100, 255, 0.12);
-  border-radius: 10px;
-  backdrop-filter: blur(10px);
-}
+.why-card > div {padding:2rem;background:rgba(15,61,46,0.06);border:1px solid rgba(15,61,46,0.12);border-radius:10px;}
 
-.why-problem {
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: #ff6b9d;
-  margin-bottom: 0.8rem;
-}
+.why-problem {font-size:1.1rem;font-weight:600;color:var(--c-danger);margin-bottom:0.8rem;}
 
-.why-arrow {
-  font-size: 1.5rem;
-  color: #c864ff;
-  margin: 0.5rem 0;
-}
+.why-arrow {font-size:1.5rem;color:var(--c-green);margin:0.5rem 0;}
 
-.why-solution {
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: #00d9ff;
-}
+.why-solution {font-size:1.1rem;font-weight:600;color:var(--c-green);}
 
 /* BENEFITS */
-.benefits {
-  padding: 5rem 2rem;
-  max-width: 1100px;
-  margin: 0 auto;
-}
+.benefits {padding:5rem 2rem;max-width:1100px;margin:0 auto;}
 
-.benefits-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 2rem;
-}
+.benefits-grid {display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:2rem;}
 
-.benefit-item {
-  display: block;
-  padding: 2rem;
-  background: rgba(200, 100, 255, 0.05);
-  border: 1px solid rgba(200, 100, 255, 0.1);
-  border-radius: 10px;
-  backdrop-filter: blur(10px);
-  transition: all 0.3s ease;
-}
+.benefit-item {display:block;padding:2rem;background:rgba(15,61,46,0.05);border:1px solid rgba(15,61,46,0.1);border-radius:10px;transition:all 0.3s ease;}
 
-.benefit-item:hover {
-  background: rgba(200, 100, 255, 0.08);
-  border-color: rgba(200, 100, 255, 0.2);
-}
+.benefit-item:hover {background:rgba(15,61,46,0.08);border-color:rgba(15,61,46,0.2);}
 
-.benefit-item h3 {
-  font-size: 1.1rem;
-  margin: 0 0 1rem;
-  color: #fff;
-}
+.benefit-item h3 {font-size:1.1rem;margin:0 0 1rem;color:var(--c-ink);}
 
-.benefit-item p {
-  font-size: 0.95rem;
-  color: #a0a0a0;
-  margin: 0;
-  line-height: 1.6;
-}
+.benefit-item p {font-size:0.95rem;color:var(--c-ink-2);margin:0;line-height:1.6;}
 
 /* JOBS */
-.jobs {
-  padding: 5rem 2rem;
-  max-width: 1100px;
-  margin: 0 auto;
-}
+.jobs {padding:5rem 2rem;max-width:1100px;margin:0 auto;}
 
-.jobs-desc {
-  font-size: 1rem;
-  color: #a0a0a0;
-  text-align: center;
-  margin: 0 0 3rem;
-  max-width: 600px;
-  margin-left: auto;
-  margin-right: auto;
-}
+.jobs-desc {font-size:1rem;color:var(--c-ink-2);text-align:center;margin:0 0 3rem;max-width:600px;margin-left:auto;margin-right:auto;}
 
-.jobs-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 1.5rem;
-}
+.jobs-grid {display:grid;grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));gap:1.5rem;}
 
-.job-card {
-  padding: 1.5rem;
-  background: rgba(200, 100, 255, 0.05);
-  border: 1px solid rgba(200, 100, 255, 0.1);
-  border-radius: 10px;
-  backdrop-filter: blur(10px);
-  transition: all 0.3s ease;
-}
+.job-card {padding:1.5rem;background:rgba(15,61,46,0.05);border:1px solid rgba(15,61,46,0.1);border-radius:10px;transition:all 0.3s ease;}
 
-.job-card:hover {
-  background: rgba(200, 100, 255, 0.1);
-  border-color: rgba(200, 100, 255, 0.3);
-  transform: translateY(-2px);
-}
+.job-card:hover {background:rgba(15,61,46,0.1);border-color:rgba(15,61,46,0.3);}
 
-.job-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
+.job-header {display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;margin-bottom:1rem;}
 
-.job-title {
-  font-size: 1rem;
-  font-weight: 600;
-  margin: 0 0 0.3rem;
-  color: #fff;
-}
+.job-title {font-size:1rem;font-weight:600;margin:0 0 0.3rem;color:var(--c-ink);}
 
-.job-company {
-  font-size: 0.9rem;
-  color: #888;
-  margin: 0;
-}
+.job-company {font-size:0.9rem;color:var(--c-ink-2);margin:0;}
 
-.badge {
-  display: inline-block;
-  background: rgba(0, 217, 255, 0.2);
-  border: 1px solid rgba(0, 217, 255, 0.3);
-  color: #00d9ff;
-  padding: 0.35rem 0.75rem;
-  border-radius: 4px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  white-space: nowrap;
-}
+.badge {display:inline-block;background:rgba(15,61,46,0.2);border:1px solid rgba(15,61,46,0.3);color:var(--c-green);padding:0.35rem 0.75rem;border-radius:4px;font-size:0.8rem;font-weight:600;white-space:nowrap;}
 
-.job-details {
-  display: flex;
-  gap: 1.5rem;
-  font-size: 0.9rem;
-  color: #a0a0a0;
-}
+.job-details {display:flex;gap:1.5rem;font-size:0.9rem;color:var(--c-ink-2);}
 
 /* HOW */
-.how {
-  padding: 5rem 2rem;
-  max-width: 1000px;
-  margin: 0 auto;
-}
+.how {padding:5rem 2rem;max-width:1000px;margin:0 auto;}
 
-.how-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 2rem;
-}
+.how-grid {display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:2rem;}
 
-.how-card {
-  display: block;
-  padding: 2.5rem;
-  background: rgba(200, 100, 255, 0.05);
-  border: 1px solid rgba(200, 100, 255, 0.1);
-  border-radius: 10px;
-  backdrop-filter: blur(10px);
-  text-align: center;
-}
+.how-card {display:block;padding:2.5rem;background:rgba(15,61,46,0.05);border:1px solid rgba(15,61,46,0.1);border-radius:10px;text-align:center;}
 
-.step {
-  font-size: 2.5rem;
-  font-weight: 700;
-  color: #c864ff;
-  margin-bottom: 1rem;
-}
+.step {font-size:2.5rem;font-weight:700;color:var(--c-green);margin-bottom:1rem;}
 
-.how-card h3 {
-  font-size: 1.15rem;
-  margin: 0 0 0.8rem;
-  color: #fff;
-}
+.how-card h3 {font-size:1.15rem;margin:0 0 0.8rem;color:var(--c-ink);}
 
-.how-card p {
-  font-size: 0.95rem;
-  color: #a0a0a0;
-  margin: 0;
-  line-height: 1.6;
-}
+.how-card p {font-size:0.95rem;color:var(--c-ink-2);margin:0;line-height:1.6;}
 
 /* TRUST */
-.trust {
-  padding: 5rem 2rem;
-  max-width: 1100px;
-  margin: 0 auto;
-  text-align: center;
-}
+.trust {padding:5rem 2rem;max-width:1100px;margin:0 auto;text-align:center;}
 
-.trust h2 {
-  margin-bottom: 0.5rem;
-}
+.trust h2 {margin-bottom:0.5rem;}
 
-.trust > p {
-  font-size: 1rem;
-  color: #a0a0a0;
-  margin: 0 0 3rem;
-}
+.trust > p {font-size:1rem;color:var(--c-ink-2);margin:0 0 3rem;}
 
-.trust-stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 2rem;
-}
+.trust-stats {display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:2rem;}
 
-.trust-stat {
-  text-align: center;
-  padding: 2rem;
-  background: rgba(200, 100, 255, 0.05);
-  border: 1px solid rgba(200, 100, 255, 0.1);
-  border-radius: 10px;
-  backdrop-filter: blur(10px);
-}
+.trust-stat {text-align:center;padding:2rem;background:rgba(15,61,46,0.05);border:1px solid rgba(15,61,46,0.1);border-radius:10px;}
 
-.trust-num {
-  font-size: 2rem;
-  font-weight: 700;
-  color: #c864ff;
-  display: block;
-  margin-bottom: 0.5rem;
-}
+.trust-num {font-size:2rem;font-weight:700;color:var(--c-green);display:block;margin-bottom:0.5rem;}
 
-.trust-label {
-  font-size: 0.9rem;
-  color: #a0a0a0;
-  display: block;
-}
+.trust-label {font-size:0.9rem;color:var(--c-ink-2);display:block;}
 
-.sponsors-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-  justify-content: center;
-}
+.sponsors-grid {display:flex;flex-wrap:wrap;gap:1rem;justify-content:center;}
 
-.sponsor-badge {
-  padding: 0.7rem 1.3rem;
-  background: rgba(200, 100, 255, 0.08);
-  border: 1px solid rgba(200, 100, 255, 0.12);
-  border-radius: 6px;
-  font-size: 0.9rem;
-  color: #d0d0d0;
-  backdrop-filter: blur(10px);
-}
+.sponsor-badge {padding:0.7rem 1.3rem;background:rgba(15,61,46,0.08);border:1px solid rgba(15,61,46,0.12);border-radius:6px;font-size:0.9rem;color:var(--c-ink);}
 
 /* FAQ */
-.faq {
-  padding: 5rem 2rem;
-  max-width: 900px;
-  margin: 0 auto;
-}
+.faq {padding:5rem 2rem;max-width:900px;margin:0 auto;}
 
-.faq-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 2rem;
-}
+.faq-grid {display:grid;grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));gap:2rem;}
 
-.faq-item {
-  display: block;
-  padding: 2rem;
-  background: rgba(200, 100, 255, 0.05);
-  border: 1px solid rgba(200, 100, 255, 0.1);
-  border-radius: 10px;
-  backdrop-filter: blur(10px);
-}
+.faq-item {display:block;padding:2rem;background:rgba(15,61,46,0.05);border:1px solid rgba(15,61,46,0.1);border-radius:10px;}
 
-.faq-item h4 {
-  font-size: 1.05rem;
-  margin: 0 0 1rem;
-  color: #fff;
-}
+.faq-item h4 {font-size:1.05rem;margin:0 0 1rem;color:var(--c-ink);}
 
-.faq-item p {
-  font-size: 0.95rem;
-  color: #a0a0a0;
-  margin: 0;
-  line-height: 1.6;
-}
+.faq-item p {font-size:0.95rem;color:var(--c-ink-2);margin:0;line-height:1.6;}
 
 /* CTA */
-.cta {
-  padding: 5rem 2rem;
-  text-align: center;
-  max-width: 800px;
-  margin: 0 auto;
-}
+.cta {padding:5rem 2rem;text-align:center;max-width:800px;margin:0 auto;}
 
-.cta h2 {
-  margin-bottom: 1rem;
-}
+.cta h2 {margin-bottom:1rem;}
 
-.cta > p {
-  font-size: 1.05rem;
-  color: #a0a0a0;
-  margin: 0 0 2.5rem;
-  line-height: 1.6;
-}
+.cta > p {font-size:1.05rem;color:var(--c-ink-2);margin:0 0 2.5rem;line-height:1.6;}
 
-.btn-cta {
-  background: linear-gradient(135deg, #c864ff 0%, #ff00ff 100%);
-  border: none;
-  color: #030305;
-  padding: 16px 40px;
-  border-radius: 8px;
-  font-size: 1.05rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: 0 8px 32px rgba(200, 100, 255, 0.3);
-}
+.btn-cta {background:var(--c-green);border:none;color:#f5f1e8;padding:16px 40px;border-radius:8px;font-size:1.05rem;font-weight:600;cursor:pointer;transition:all 0.3s ease;box-shadow:none;}
 
-.btn-cta:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 12px 48px rgba(200, 100, 255, 0.4);
-}
+.btn-cta:hover {box-shadow:none;}
 
 /* FOOTER */
-.footer {
-  padding: 3rem 2rem;
-  border-top: 1px solid rgba(200, 100, 255, 0.1);
-  background: rgba(200, 100, 255, 0.02);
-}
+.footer {padding:3rem 2rem;border-top:1px solid rgba(15,61,46,0.1);background:rgba(15,61,46,0.02);}
 
-.footer-inner {
-  max-width: 1200px;
-  margin: 0 auto;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 2rem;
-}
+.footer-inner {max-width:1200px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:2rem;}
 
-.footer-links {
-  display: flex;
-  gap: 2rem;
-  font-size: 0.9rem;
-  color: #888;
-}
+.footer-links {display:flex;gap:2rem;font-size:0.9rem;color:var(--c-ink-2);}
 
 /* RESPONSIVE */
 @media (max-width: 768px) {
-  .hero {
-    padding: 6rem 1.5rem 3rem;
-  }
+  .hero {padding:6rem 1.5rem 3rem;}
 
-  .hero-title {
-    font-size: 1.8rem;
-  }
+  .hero-title {font-size:1.8rem;}
 
   .problem h2,
   .why h2,
@@ -864,17 +402,21 @@ const styles = `
   .how h2,
   .trust h2,
   .faq h2,
-  .cta h2 {
-    font-size: 1.8rem;
-  }
+  .cta h2 {font-size:1.8rem;}
 
-  .footer-inner {
-    flex-direction: column;
-    text-align: center;
-  }
+  .footer-inner {flex-direction:column;text-align:center;}
 
-  .footer-links {
-    justify-content: center;
-  }
+  .footer-links {justify-content:center;}
 }
+
+/* ivory refinements */
+.hero-title { font-family: var(--font-display); font-weight: 400; letter-spacing: -0.01em; line-height: 1.08; }
+
+.logo { font-family: var(--font-display); font-weight: 400; font-size: 1.7rem; letter-spacing: -0.01em; }
+.btn-nav { background: transparent; border: 1px solid var(--c-line-2); color: var(--c-ink); border-radius: 8px; }
+.btn-nav:hover { background: transparent; border-color: var(--c-ink); }
+.landing h2, .landing .stat-num, .landing .trust-num { font-family: var(--font-display); font-weight: 400; letter-spacing: -0.01em; }
+.landing h2 { font-size: clamp(2rem, 4vw, 2.8rem); }
+.landing .problem-card, .landing .why-card, .landing .benefit-item, .landing .how-card, .landing .faq-item, .landing .hero-stats, .landing .trust-stat { background: var(--c-surface); border: 1px solid var(--c-line); box-shadow: none; }
+.landing .step { background: var(--c-green); color: #f5f1e8; }
 `;

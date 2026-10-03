@@ -8,19 +8,19 @@
 }
 
 :root {
-  --bg: #0a0a0f;
-  --bg2: #111118;
-  --bg3: #1a1a28;
-  --border: rgba(255, 255, 255, 0.06);
-  --border2: rgba(255, 255, 255, 0.12);
-  --primary: #7c6fef;
-  --primary2: #9b6ef3;
-  --green: #00d4aa;
-  --gold: #f5a623;
-  --red: #ff4d6d;
-  --text1: #f0f0ff;
-  --text2: #8888aa;
-  --text3: #55556a;
+  --bg: #f5f1e8;
+  --bg2: #fffdf8;
+  --bg3: #faf6ec;
+  --border: #e2dccd;
+  --border2: #cfc7b4;
+  --primary: #0f3d2e;
+  --primary2: #14503c;
+  --green: #1e7a55;
+  --gold: #8f7236;
+  --red: #a83a2e;
+  --text1: #15231c;
+  --text2: #4f5b54;
+  --text3: #66706a;
 }
 
 html {
@@ -46,13 +46,14 @@ body {
   background: var(--bg);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--bg3);
+  background: var(--border2);
   border-radius: 3px;
 }
 
 /* Selection */
 ::selection {
-  background: rgba(124, 111, 239, 0.3);
+  background: #e4eee7;
+  color: #0f3d2e;
 }
 
 /* Animations */
@@ -145,7 +146,6 @@ body {
 
 .btn-primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 8px 25px rgba(124, 111, 239, 0.35);
 }
 
 .btn-primary:active {
@@ -210,8 +210,8 @@ body {
   align-items: center;
   gap: 4px;
   padding: 3px 10px;
-  background: rgba(0, 212, 170, 0.1);
-  border: 1px solid rgba(0, 212, 170, 0.25);
+  background: rgba(30, 122, 85, 0.1);
+  border: 1px solid rgba(30, 122, 85, 0.25);
   border-radius: 999px;
   color: var(--green);
   font-size: 11px;
@@ -220,8 +220,8 @@ body {
 
 .badge-purple {
   padding: 3px 10px;
-  background: rgba(124, 111, 239, 0.1);
-  border: 1px solid rgba(124, 111, 239, 0.25);
+  background: rgba(15, 61, 46, 0.1);
+  border: 1px solid rgba(15, 61, 46, 0.25);
   border-radius: 999px;
   color: var(--primary);
   font-size: 11px;

@@ -1,0 +1,254 @@
+/* ─────────────────────────────────────────────────────────────
+   IVORY DESIGN SYSTEM
+   One palette, one type scale, a few primitives. Applied by adding
+   the `ivory` class to a page root. Pages not yet converted keep the
+   old look until they get the class.
+
+   Palette: warm ivory ground, deep forest green for action and
+   "verified", one muted brass accent. No gradients, no glow.
+   Motion: short state transitions only. Nothing loops.
+   ───────────────────────────────────────────────────────────── */
+
+.ivory,
+:root {
+  --c-bg: #f5f1e8;
+  --c-surface: #fffdf8;
+  --c-surface-2: #faf6ec;
+  --c-ink: #15231c;
+  --c-ink-2: #4f5b54;
+  --c-ink-3: #66706a;
+  --c-line: #e2dccd;
+  --c-line-2: #cfc7b4;
+  --c-green: #0f3d2e;
+  --c-green-2: #14503c;
+  --c-green-soft: #e4eee7;
+  --c-brass: #8f7236;
+  --c-brass-soft: #f1e8d0;
+  --c-ok: #1e7a55;
+  --c-ok-soft: #e1f0e8;
+  --c-warn: #8a5e0f;
+  --c-warn-soft: #f6ebd2;
+  --c-danger: #a83a2e;
+  --c-danger-soft: #f6e1dd;
+
+  --radius: 10px;
+  --radius-lg: 16px;
+  --shadow: 0 1px 2px rgba(21, 35, 28, 0.04), 0 8px 24px rgba(21, 35, 28, 0.06);
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --t: 160ms;
+
+  --font-display: "Instrument Serif", "Fraunces", Georgia, serif;
+  --font-body: "Geist", "Inter", system-ui, -apple-system, sans-serif;
+}
+
+body {
+  background: var(--c-bg);
+  color: var(--c-ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+.ivory {
+  background: var(--c-bg);
+  color: var(--c-ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+.ivory *,
+.ivory *::before,
+.ivory *::after {
+  box-sizing: border-box;
+}
+
+.ivory ::selection {
+  background: var(--c-green-soft);
+  color: var(--c-green);
+}
+
+.ivory :focus-visible {
+  outline: 2px solid var(--c-green);
+  outline-offset: 2px;
+}
+
+/* ── Type ───────────────────────────────────────────────────── */
+.ivory .iv-display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  line-height: 1.08;
+}
+.ivory .iv-eyebrow {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--c-brass);
+}
+
+/* ── Primitives ─────────────────────────────────────────────── */
+.ivory .iv-card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-lg);
+}
+
+.ivory .iv-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 22px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  font: 600 14px/1 var(--font-body);
+  cursor: pointer;
+  transition: background var(--t) var(--ease), border-color var(--t) var(--ease), color var(--t) var(--ease);
+}
+.ivory .iv-btn--primary {
+  background: var(--c-green);
+  color: #f5f1e8;
+}
+.ivory .iv-btn--primary:hover:not(:disabled) {
+  background: var(--c-green-2);
+}
+.ivory .iv-btn--ghost {
+  background: transparent;
+  color: var(--c-ink);
+  border-color: var(--c-line-2);
+}
+.ivory .iv-btn--ghost:hover:not(:disabled) {
+  border-color: var(--c-ink);
+}
+.ivory .iv-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ivory .iv-input {
+  width: 100%;
+  background: var(--c-surface);
+  border: 1px solid var(--c-line-2);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  color: var(--c-ink);
+  font: 400 15px/1.3 var(--font-body);
+  transition: border-color var(--t) var(--ease), box-shadow var(--t) var(--ease);
+}
+.ivory .iv-input::placeholder {
+  color: #9a9f97;
+}
+.ivory .iv-input:focus {
+  outline: none;
+  border-color: var(--c-green);
+  box-shadow: 0 0 0 3px var(--c-green-soft);
+}
+
+.ivory .iv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--c-line-2);
+  background: var(--c-surface);
+  color: var(--c-ink-2);
+  font: 500 12.5px/1 var(--font-body);
+  cursor: pointer;
+  transition: border-color var(--t) var(--ease), background var(--t) var(--ease), color var(--t) var(--ease);
+}
+.ivory .iv-chip:hover {
+  border-color: var(--c-green);
+  color: var(--c-ink);
+}
+.ivory .iv-chip.is-on {
+  background: var(--c-green-soft);
+  border-color: var(--c-green);
+  color: var(--c-green);
+}
+
+/* ── App navigation, ivory variant ──────────────────────────── */
+.ivory .nb {
+  background: var(--c-bg);
+  border-bottom: 1px solid var(--c-line);
+}
+.ivory .nb-logo {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  background: none;
+  -webkit-text-fill-color: var(--c-ink);
+  color: var(--c-ink);
+}
+.ivory .nb-link {
+  display: flex;
+  align-items: center;
+  height: 56px;
+  padding: 0 14px;
+  border-radius: 0;
+  position: relative;
+  color: var(--c-ink-2);
+  font-size: 13.5px;
+  font-weight: 500;
+}
+.ivory .nb-link:hover {
+  color: var(--c-ink);
+  background: transparent;
+}
+.ivory .nb-link.is-active {
+  background: none;
+  color: var(--c-ink);
+  font-weight: 600;
+}
+.ivory .nb-link.is-active::after {
+  content: "";
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: -1px;
+  height: 2px;
+  background: var(--c-green);
+}
+.ivory .nb-divider {
+  background: var(--c-line);
+}
+.ivory .nb-logout {
+  border: 1px solid var(--c-line-2);
+  border-radius: 8px;
+  color: var(--c-ink-2);
+}
+.ivory .nb-logout:hover {
+  color: var(--c-ink);
+  border-color: var(--c-ink);
+}
+.ivory .nb-logout-mobile {
+  background: var(--c-surface);
+  border: 1px solid var(--c-line-2);
+  color: var(--c-ink-2);
+}
+.ivory .nb-tabbar {
+  background: var(--c-bg);
+  backdrop-filter: none;
+  border-top: 1px solid var(--c-line);
+}
+.ivory .nb-tab {
+  color: var(--c-ink-3);
+}
+.ivory .nb-tab.is-active {
+  color: var(--c-green);
+}
+.ivory .nb-tab-glow {
+  background: var(--c-green);
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ivory *,
+  .ivory *::before,
+  .ivory *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

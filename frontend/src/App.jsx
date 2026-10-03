@@ -267,11 +267,15 @@ function AppRouter() {
   const [showLanding, setShowLanding] = useState(true);
   const [selectedJob, setSelectedJob] = useState(null);
   const [allJobs, setAllJobs] = useState([]);
+  const [profileTab, setProfileTab] = useState("overview");
 
   const handleNavigate = (nextPage, data) => {
     if (nextPage === "jobDetail" && data) {
       setSelectedJob(data);
       setPage("jobDetail");
+    } else if (nextPage === "profile") {
+      setProfileTab(data?.tab || "overview");
+      setPage("profile");
     } else {
       setPage(nextPage);
     }
@@ -315,7 +319,7 @@ function AppRouter() {
       case "chat":
         return <Chat />;
       case "profile":
-        return <Profile onNavigate={handleNavigate} />;
+        return <Profile onNavigate={handleNavigate} initialTab={profileTab} />;
       case "ats":
         return <ATS onNavigate={handleNavigate} />;
       default:
@@ -324,8 +328,8 @@ function AppRouter() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0f0f1a", color: "#fff" }}>
-      <NavBar page={page} setPage={setPage} />
+    <div className="ivory" style={{ minHeight: "100vh" }}>
+      <NavBar page={page} setPage={handleNavigate} />
       {renderPage()}
     </div>
   );

@@ -12,16 +12,6 @@ const AI_URL = import.meta.env.VITE_AI_URL;
 // ─────────────────────────────────────────────
 // UTILITIES
 // ─────────────────────────────────────────────
-const prefersReducedMotion = () => {
-  try {
-    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  } catch {
-    return false;
-  }
-};
-
-const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
-
 const formatBytes = (b) => {
   if (!b && b !== 0) return "";
   if (b < 1024) return `${b} B`;
@@ -30,9 +20,9 @@ const formatBytes = (b) => {
 };
 
 const scoreBand = (s) => {
-  if (s >= 60) return { label: "Strong match", text: "#00d4aa" };
-  if (s >= 30) return { label: "Getting there", text: "#f5c451" };
-  return { label: "Early days", text: "#ff7a7a" };
+  if (s >= 60) return { label: "Strong match", text: "#1e7a55" };
+  if (s >= 30) return { label: "Getting there", text: "#8f7236" };
+  return { label: "Early days", text: "#a83a2e" };
 };
 
 const initials = (name) => {
@@ -42,26 +32,6 @@ const initials = (name) => {
     ? parts[0][0].toUpperCase()
     : (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 };
-
-// Count-up hook
-function useCountUp(target, duration = 1000) {
-  const end = Number(target) || 0;
-  const reduced = prefersReducedMotion();
-  const [value, setValue] = useState(reduced ? end : 0);
-  useEffect(() => {
-    if (reduced) return;
-    let raf;
-    const start = performance.now();
-    const tick = (now) => {
-      const p = Math.min((now - start) / duration, 1);
-      setValue(Math.round(end * easeOutCubic(p)));
-      if (p < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [end, duration, reduced]);
-  return value;
-}
 
 // ─────────────────────────────────────────────
 // ICONS
@@ -157,7 +127,7 @@ function Toast({ toast }) {
 // ─────────────────────────────────────────────
 function RadialGauge({ score }) {
   const safe = Math.max(0, Math.min(100, Number(score) || 0));
-  const shown = useCountUp(safe, 1200);
+  const shown = safe;
   const band = scoreBand(safe);
   const r = 52;
   const C = 2 * Math.PI * r;
@@ -166,27 +136,13 @@ function RadialGauge({ score }) {
   return (
     <div className="prof-gauge">
       <svg viewBox="0 0 120 120" className="prof-gauge-svg" aria-hidden="true">
-        <defs>
-          <linearGradient id="g-good-prof" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#00d4aa" />
-            <stop offset="100%" stopColor="#7c6fef" />
-          </linearGradient>
-          <linearGradient id="g-mid-prof" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#f5c451" />
-            <stop offset="100%" stopColor="#e879f9" />
-          </linearGradient>
-          <linearGradient id="g-low-prof" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#ff7a7a" />
-            <stop offset="100%" stopColor="#e879f9" />
-          </linearGradient>
-        </defs>
         <circle cx="60" cy="60" r={r} className="prof-gauge-track" />
         <circle
           cx="60"
           cy="60"
           r={r}
           className="prof-gauge-arc"
-          stroke={safe >= 60 ? "url(#g-good-prof)" : safe >= 30 ? "url(#g-mid-prof)" : "url(#g-low-prof)"}
+          stroke={band.text}
           strokeDasharray={C}
           strokeDashoffset={offset}
           transform="rotate(-90 60 60)"
@@ -806,7 +762,7 @@ function DeleteAccount({ token, onDeleted, flash }) {
 // ─────────────────────────────────────────────
 // MAIN PROFILE
 // ─────────────────────────────────────────────
-export default function Profile({ onNavigate }) {
+export default function Profile({ onNavigate, initialTab }) {
   const { currentUser, token, logout } = useAuth();
   const { profile, loading, error, setProfile, updateProfile, saveSkills, saveGap, setPlanItem } =
     useCareerProfile();
@@ -814,7 +770,7 @@ export default function Profile({ onNavigate }) {
   const tracker = useApplications();
   const [notesOpen, setNotesOpen] = useState(null);
   const [ivRequest, setIvRequest] = useState({ nonce: 0, appId: null, auto: false });
-  const [activeTab, setActiveTab] = useState("overview");
+  const [activeTab, setActiveTab] = useState(initialTab || "overview");
   const [editingRole, setEditingRole] = useState(false);
   const [roleDraft, setRoleDraft] = useState("");
   const [cvFile, setCvFile] = useState(null);
@@ -1428,32 +1384,31 @@ export default function Profile({ onNavigate }) {
 
 
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-
 .prof {
-  --p1: #7c6fef;
-  --p2: #9b6ef3;
-  --mg: #e879f9;
-  --tl: #00d4aa;
-  --gold: #f5c451;
-  --red: #ff6b6b;
-  --bg: #08080f;
-  --s1: #0d0d1a;
-  --s2: #111122;
-  --s3: #181830;
-  --bd: rgba(255,255,255,0.055);
-  --bd2: rgba(124,111,239,0.28);
-  --tx: #f0f0ff;
-  --tx2: #8888aa;
-  --tx3: #4e4e66;
+  --p1: var(--c-green);
+  --p2: var(--c-green);
+  --mg: var(--c-brass);
+  --tl: var(--c-ok);
+  --gold: var(--c-brass);
+  --red: var(--c-danger);
+  --bg: var(--c-bg);
+  --s1: var(--c-surface-2);
+  --s2: var(--c-surface);
+  --s3: var(--c-surface);
+  --bd: var(--c-line);
+  --bd2: var(--c-line-2);
+  --tx: var(--c-ink);
+  --tx2: var(--c-ink-2);
+  --tx3: var(--c-ink-3);
 
   width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
   min-height: 100vh;
-  padding: clamp(2rem, 5vw, 3rem) clamp(1rem, 3vw, 2rem);
+  padding: clamp(2rem, 5vw, 3.5rem) clamp(1rem, 3vw, 2rem);
   box-sizing: border-box;
   color: var(--tx);
-  font-family: 'Inter', sans-serif;
-  background: var(--bg);
+  font-family: var(--font-body);
 }
 
 .prof * { box-sizing: border-box; }
@@ -1475,14 +1430,13 @@ const CSS = `
   width: 70px;
   height: 70px;
   border-radius: 50%;
-  background: linear-gradient(135deg, var(--p1), var(--p2));
+  background: var(--c-green);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 24px;
   font-weight: 800;
-  color: #fff;
-  box-shadow: 0 8px 24px rgba(124,111,239,0.3);
+  color: #f5f1e8;
 }
 
 .prof-header-info { flex: 1; }
@@ -1498,7 +1452,7 @@ const CSS = `
 }
 
 .prof-visa {
-  background: rgba(0,212,170,0.1);
+  background: rgba(30,122,85,0.1);
   color: var(--tl);
   padding: 4px 10px;
   border-radius: 6px;
@@ -1517,11 +1471,11 @@ const CSS = `
 }
 
 .prof-role-clickable:hover {
-  background: rgba(124,111,239,0.2);
+  background: rgba(15,61,46,0.2);
 }
 
 .prof-role-input {
-  background: rgba(124,111,239,0.1);
+  background: rgba(15,61,46,0.1);
   border: 1px solid var(--bd2);
   border-radius: 6px;
   color: var(--tx);
@@ -1533,7 +1487,6 @@ const CSS = `
 .prof-role-input:focus {
   outline: none;
   border-color: var(--p2);
-  box-shadow: 0 0 8px rgba(124,111,239,0.3);
 }
 
 /* TABS */
@@ -1564,12 +1517,12 @@ const CSS = `
 
 .prof-tab:hover {
   color: var(--tx);
-  background: rgba(124,111,239,0.1);
+  background: rgba(15,61,46,0.1);
 }
 
 .prof-tab.is-active {
   color: var(--p2);
-  background: rgba(124,111,239,0.15);
+  background: rgba(15,61,46,0.15);
   border-bottom: 2px solid var(--p2);
 }
 
@@ -1582,8 +1535,8 @@ const CSS = `
 }
 
 @keyframes prof-fade {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .prof-panel {
@@ -1595,8 +1548,8 @@ const CSS = `
 }
 
 @keyframes prof-slide {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .prof-panel-title {
@@ -1614,7 +1567,7 @@ const CSS = `
 }
 
 .prof-overview-card {
-  background: linear-gradient(135deg, rgba(124,111,239,0.1), rgba(232,121,249,0.05));
+  background: var(--c-surface);
   border: 1px solid var(--bd);
   border-radius: 16px;
   padding: 20px;
@@ -1624,11 +1577,10 @@ const CSS = `
 
 .prof-overview-card:hover {
   border-color: var(--bd2);
-  transform: translateY(-2px);
 }
 
 .prof-card-label { font-size: 12px; font-weight: 600; color: var(--tx2); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
-.prof-card-value { font-size: 32px; font-weight: 800; background: linear-gradient(135deg, var(--p1), var(--p2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 4px; }
+.prof-card-value { font-size: 32px; font-weight: 800; color: var(--c-green); font-family: var(--font-display); font-weight: 400; margin-bottom: 4px; }
 .prof-card-sub { font-size: 12px; color: var(--tx3); }
 
 /* SKILLS SECTION */
@@ -1657,7 +1609,6 @@ const CSS = `
 .prof-input:focus {
   outline: none;
   border-color: var(--bd2);
-  box-shadow: 0 0 12px rgba(124,111,239,0.2);
   background: var(--s2);
 }
 
@@ -1665,9 +1616,9 @@ const CSS = `
   width: 44px;
   height: 44px;
   border-radius: 12px;
-  background: linear-gradient(135deg, var(--p1), var(--p2));
+  background: var(--c-green);
   border: none;
-  color: #fff;
+  color: #f5f1e8;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -1676,8 +1627,6 @@ const CSS = `
 }
 
 .prof-add-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 16px rgba(124,111,239,0.4);
 }
 
 .prof-skills {
@@ -1690,7 +1639,7 @@ const CSS = `
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: rgba(124,111,239,0.2);
+  background: rgba(15,61,46,0.2);
   border: 1px solid var(--bd2);
   border-radius: 20px;
   padding: 8px 12px;
@@ -1701,12 +1650,12 @@ const CSS = `
 }
 
 @keyframes prof-pop {
-  from { opacity: 0; transform: scale(0.9); }
-  to { opacity: 1; transform: scale(1); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .prof-chip.is-manual {
-  border-color: rgba(232,121,249,0.3);
+  border-color: rgba(143,114,54,0.3);
   color: var(--mg);
 }
 
@@ -1734,9 +1683,9 @@ const CSS = `
 }
 
 .prof-primary {
-  background: linear-gradient(135deg, var(--p1), var(--p2));
+  background: var(--c-green);
   border: none;
-  color: #fff;
+  color: #f5f1e8;
   padding: 12px 24px;
   border-radius: 12px;
   font-weight: 700;
@@ -1746,8 +1695,6 @@ const CSS = `
 }
 
 .prof-primary:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(124,111,239,0.3);
 }
 
 .prof-primary:disabled {
@@ -1771,7 +1718,7 @@ const CSS = `
   width: 14px;
   height: 14px;
   border: 2px solid rgba(255,255,255,0.3);
-  border-top-color: #fff;
+  border-top-color: #f5f1e8;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -1783,14 +1730,14 @@ const CSS = `
 /* STRENGTH */
 .prof-bar-row { display: flex; align-items: center; gap: 12px; }
 .prof-bar { flex: 1; height: 8px; border-radius: 99px; background: var(--s3); overflow: hidden; }
-.prof-bar-fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--p1), var(--tl)); transition: width 0.6s cubic-bezier(0.2,0.8,0.2,1); }
+.prof-bar-fill { height: 100%; border-radius: 99px; background: var(--c-green); transition: width 0.6s cubic-bezier(0.2,0.8,0.2,1); }
 .prof-bar-num { font-size: 14px; font-weight: 700; min-width: 40px; text-align: right; }
 .prof-next { font-size: 13px; color: var(--tx2); margin: 12px 0 20px; }
 .prof-next strong { color: var(--tx); font-weight: 600; }
 .prof-checks { display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; }
 .prof-check { display: flex; align-items: center; gap: 14px; background: var(--s2); border: 1px solid var(--bd); border-radius: 14px; padding: 14px 16px; }
-.prof-check.is-done { border-color: rgba(0,212,170,0.25); }
-.prof-check-dot { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--tx3); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #08080f; }
+.prof-check.is-done { border-color: rgba(30,122,85,0.25); }
+.prof-check-dot { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--tx3); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #f5f1e8; }
 .prof-check.is-done .prof-check-dot { background: var(--tl); border-color: var(--tl); }
 .prof-check-body { flex: 1; min-width: 0; }
 .prof-check-title { font-size: 14px; font-weight: 600; }
@@ -1802,14 +1749,14 @@ const CSS = `
 .prof-skill-main { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .prof-skill-name { font-size: 14px; font-weight: 600; }
 .prof-badge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 3px 8px; border-radius: 99px; }
-.prof-badge--cv { background: rgba(124,111,239,0.15); color: var(--p2); }
-.prof-badge--manual { background: rgba(245,196,81,0.14); color: var(--gold); }
-.prof-badge--learned { background: rgba(0,212,170,0.14); color: var(--tl); }
+.prof-badge--cv { background: rgba(15,61,46,0.15); color: var(--p2); }
+.prof-badge--manual { background: rgba(143,114,54,0.14); color: var(--gold); }
+.prof-badge--learned { background: rgba(30,122,85,0.14); color: var(--tl); }
 .prof-skill-ev { font-size: 12px; color: var(--tx2); margin-top: 6px; line-height: 1.45; overflow-wrap: anywhere; }
 .prof-skill-x { position: absolute; top: 12px; right: 12px; }
 
 /* GAP */
-.prof-warn { font-size: 13px; color: var(--gold); background: rgba(245,196,81,0.08); border: 1px solid rgba(245,196,81,0.25); padding: 10px 14px; border-radius: 12px; margin: 0 0 16px; }
+.prof-warn { font-size: 13px; color: var(--gold); background: rgba(143,114,54,0.08); border: 1px solid rgba(143,114,54,0.25); padding: 10px 14px; border-radius: 12px; margin: 0 0 16px; }
 .prof-gap-top { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; margin-bottom: 8px; }
 .prof-gap-top .prof-gauge { margin: 0; flex-shrink: 0; }
 .prof-gap-sum { flex: 1; min-width: 220px; }
@@ -1820,14 +1767,14 @@ const CSS = `
 .prof-block-title span { color: var(--p2); margin-left: 6px; }
 .prof-tags, .prof-gaps { display: flex; flex-wrap: wrap; gap: 8px; }
 .prof-tag { display: inline-flex; align-items: center; gap: 5px; padding: 7px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }
-.prof-tag--good { background: rgba(0,212,170,0.12); color: var(--tl); }
-.prof-gap { background: rgba(255,107,107,0.15); color: var(--red); padding: 8px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+.prof-tag--good { background: rgba(30,122,85,0.12); color: var(--tl); }
+.prof-gap { background: rgba(168,58,46,0.15); color: var(--red); padding: 8px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }
 
 .prof-plan { display: flex; flex-direction: column; gap: 8px; }
 .prof-plan-item { display: flex; gap: 12px; align-items: flex-start; background: var(--s2); border: 1px solid var(--bd); border-radius: 12px; padding: 12px 14px; }
 .prof-plan-item.is-done { opacity: 0.6; }
 .prof-plan-item.is-done .prof-plan-skill { text-decoration: line-through; }
-.prof-plan-box { width: 22px; height: 22px; border-radius: 6px; border: 1.5px solid var(--tx3); background: transparent; color: #08080f; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; padding: 0; }
+.prof-plan-box { width: 22px; height: 22px; border-radius: 6px; border: 1.5px solid var(--tx3); background: transparent; color: #f5f1e8; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; padding: 0; }
 .prof-plan-item.is-done .prof-plan-box { background: var(--tl); border-color: var(--tl); }
 .prof-plan-skill { font-size: 14px; font-weight: 600; }
 .prof-plan-res { font-size: 12px; color: var(--tx2); margin-top: 3px; }
@@ -1871,7 +1818,7 @@ const CSS = `
 .prof-details { display: flex; flex-direction: column; gap: 16px; }
 .prof-field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--tx2); }
 .prof-tag--btn { border: none; cursor: pointer; background: var(--s2); color: var(--tx2); font-family: inherit; }
-.prof-tag--btn.prof-tag--good { background: rgba(0,212,170,0.12); color: var(--tl); }
+.prof-tag--btn.prof-tag--good { background: rgba(30,122,85,0.12); color: var(--tl); }
 .prof-danger { color: var(--red); }
 .prof-delete { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
 .prof-delete .prof-input { flex: 1; min-width: 200px; }
@@ -1895,7 +1842,7 @@ const CSS = `
 
 /* DROPZONE */
 .prof-drop {
-  border: 1.5px dashed rgba(124,111,239,0.2);
+  border: 1.5px dashed rgba(15,61,46,0.2);
   border-radius: 14px;
   padding: clamp(20px, 3vw, 28px) 16px;
   text-align: center;
@@ -1906,13 +1853,12 @@ const CSS = `
 
 .prof-drop:hover {
   border-color: var(--bd2);
-  background: rgba(124,111,239,0.05);
+  background: rgba(15,61,46,0.05);
 }
 
 .prof-drop.is-drag {
   border-color: var(--p2);
-  background: rgba(124,111,239,0.1);
-  transform: scale(1.02);
+  background: rgba(15,61,46,0.1);
 }
 
 .prof-drop-ic {
@@ -1981,8 +1927,8 @@ const CSS = `
 }
 
 .prof-file--done {
-  background: rgba(0,212,170,0.08);
-  border: 1px solid rgba(0,212,170,0.2);
+  background: rgba(30,122,85,0.08);
+  border: 1px solid rgba(30,122,85,0.2);
   border-radius: 12px;
   padding: 12px 16px;
   display: flex;
@@ -2018,7 +1964,7 @@ const CSS = `
 }
 
 .prof-link-btn:hover {
-  background: rgba(124,111,239,0.2);
+  background: rgba(15,61,46,0.2);
 }
 
 /* TOAST */
@@ -2039,20 +1985,20 @@ const CSS = `
 }
 
 .prof-toast--success {
-  background: rgba(0,212,170,0.2);
-  border: 1px solid rgba(0,212,170,0.3);
+  background: rgba(30,122,85,0.2);
+  border: 1px solid rgba(30,122,85,0.3);
   color: var(--tl);
 }
 
 .prof-toast--error {
-  background: rgba(255,107,107,0.2);
-  border: 1px solid rgba(255,107,107,0.3);
+  background: rgba(168,58,46,0.2);
+  border: 1px solid rgba(168,58,46,0.3);
   color: var(--red);
 }
 
 @keyframes prof-toast-in {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 /* GAUGE */
@@ -2078,7 +2024,7 @@ const CSS = `
   fill: none;
   stroke-width: 8;
   stroke-linecap: round;
-  transition: stroke-dashoffset 1.2s cubic-bezier(0.2,0.8,0.2,1);
+  transition: stroke-dashoffset 0.4s ease;
 }
 
 .prof-gauge-inner {
@@ -2092,9 +2038,9 @@ const CSS = `
 .prof-gauge-num {
   font-size: 32px;
   font-weight: 800;
-  background: linear-gradient(135deg, var(--p1), var(--p2));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--c-ink);
+  font-family: var(--font-display);
+  font-weight: 400;
 }
 
 .prof-gauge-num span {
@@ -2138,4 +2084,21 @@ const CSS = `
     margin-bottom: 8px;
   }
 }
+
+/* IVORY REFINEMENTS */
+.prof-name { font-family: var(--font-display); font-weight: 400; font-size: clamp(2rem, 4vw, 2.7rem); letter-spacing: -0.01em; line-height: 1.1; }
+.prof-avatar-lg { font-family: var(--font-display); font-weight: 400; font-size: 26px; }
+.prof-panel-title { font-family: var(--font-display); font-weight: 400; font-size: 1.75rem; letter-spacing: -0.01em; }
+.prof-badge--cv { background: var(--c-line); color: var(--c-ink-2); }
+.prof-bar { background: var(--c-line); }
+.prof-panel, .prof-check, .prof-app, .prof-iv-card, .prof-role-card, .prof-skill-row, .prof-plan-item, .prof-req { background: var(--c-surface); }
+.prof-panel { border: 1px solid var(--c-line); box-shadow: var(--shadow); }
+.prof-board { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+.prof-select.prof-select--wide { text-transform: none; font-size: 13.5px; padding: 11px 12px; }
+.prof-hint.prof-hint--left { padding: 0; }
+.prof-tabs { gap: 4px; padding-bottom: 0; border-bottom: 1px solid var(--c-line); margin-bottom: 28px; overflow-x: auto; scrollbar-width: none; }
+.prof-tab { background: none; border: none; border-radius: 0; padding: 12px 14px; font-size: 13.5px; color: var(--c-ink-3); position: relative; white-space: nowrap; }
+.prof-tab:hover { color: var(--c-ink); background: none; }
+.prof-tab.is-active { background: none; color: var(--c-ink); font-weight: 600; border-bottom: none; }
+.prof-tab.is-active::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: -1px; height: 2px; background: var(--c-green); }
 `;
