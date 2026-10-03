@@ -1371,64 +1371,83 @@ def get_job_categories():
 # Fetches complete descriptions from Reed/Adzuna
 # when the free API returns truncated text
 # ─────────────────────────────────────────────
-def scrape_reed_description(url):
+_SCRAPE_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+}
+
+
+def _html_to_text(fragment):
+    # Job boards ship descriptions as HTML; keep line breaks so the ATS scanner
+    # still sees bullets and sections.
+    soup = BeautifulSoup(fragment, "html.parser")
+    for br in soup.find_all("br"):
+        br.replace_with("\n")
+    for li in soup.find_all("li"):
+        li.insert_before("\n- ")
+    for block in soup.find_all(["p", "div", "h1", "h2", "h3", "h4", "ul", "ol"]):
+        block.append("\n")
+    text = soup.get_text()
+    lines = [" ".join(line.split()) for line in text.splitlines()]
+    return "\n".join(line for line in lines if line).strip()
+
+
+def _extract_job_description(html, selectors):
+    soup = BeautifulSoup(html, "html.parser")
+
+    # 1. schema.org JobPosting JSON-LD: structured and stable across redesigns
+    for tag in soup.find_all("script", type="application/ld+json"):
+        try:
+            data = json.loads(tag.string or "")
+        except Exception:
+            continue
+        items = data if isinstance(data, list) else [data]
+        for item in items:
+            if isinstance(item, dict) and item.get("@type") == "JobPosting":
+                desc = item.get("description")
+                if desc:
+                    text = _html_to_text(desc)
+                    if len(text) > 200:
+                        return text
+
+    # 2. Site-specific containers, as a fallback
+    for sel in selectors:
+        node = soup.select_one(sel)
+        if node:
+            text = _html_to_text(str(node))
+            if len(text) > 200:
+                return text
+    return None
+
+
+def _scrape_description(url, selectors):
     try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
-        response = http_requests.get(url, headers=headers, timeout=5)
+        response = http_requests.get(
+            url, headers=_SCRAPE_HEADERS, timeout=8, allow_redirects=True
+        )
         if response.status_code != 200:
             return None
-
-        soup = BeautifulSoup(response.content, "html.parser")
-
-        # Reed stores full description in this div
-        desc_div = soup.find("div", {"data-testid": "jobDescription"})
-        if not desc_div:
-            desc_div = soup.find("div", class_="job-description")
-        if not desc_div:
-            desc_div = soup.find(
-                "div", {"class": lambda x: x and "description" in x.lower()}
-            )
-
-        if desc_div:
-            text = desc_div.get_text(separator=" ", strip=True)
-            return text.strip() if text else None
-
-        return None
+        return _extract_job_description(response.text, selectors)
     except Exception as e:
-        print(f"Reed scraper error: {e}")
+        print(f"Description scraper error: {e}")
         return None
+
+
+def scrape_reed_description(url):
+    return _scrape_description(
+        url,
+        [
+            '[data-testid="jobDescription"]',
+            "div.job-description",
+            '[itemprop="description"]',
+        ],
+    )
 
 
 def scrape_adzuna_description(url):
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
-        response = http_requests.get(url, headers=headers, timeout=5)
-        if response.status_code != 200:
-            return None
-
-        soup = BeautifulSoup(response.content, "html.parser")
-
-        # Adzuna stores full description in this div
-        desc_div = soup.find("div", class_="job-full-description")
-        if not desc_div:
-            desc_div = soup.find("div", {"data-adzuna-id": "job-description"})
-        if not desc_div:
-            desc_div = soup.find(
-                "div", {"class": lambda x: x and "description" in x.lower()}
-            )
-
-        if desc_div:
-            text = desc_div.get_text(separator=" ", strip=True)
-            return text.strip() if text else None
-
-        return None
-    except Exception as e:
-        print(f"Adzuna scraper error: {e}")
-        return None
+    return _scrape_description(
+        url,
+        ["section.adp-body", "div.job-full-description", '[itemprop="description"]'],
+    )
 
 
 # ─────────────────────────────────────────────

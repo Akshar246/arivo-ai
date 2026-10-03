@@ -282,7 +282,7 @@ function ListCard({ job, active, saved, onSelect, onToggleSave }) {
 }
 
 // ── Detail panel (the in-app description view) ────────────────
-function Detail({ job, saved, onToggleSave, onClose, onScan, onNavigate }) {
+function Detail({ job, saved, onToggleSave, onClose, onScan, onNavigate, fullDesc }) {
   const [companyRoles, setCompanyRoles] = useState(null);
   const [companyRolesLoading, setCompanyRolesLoading] = useState(false);
 
@@ -371,9 +371,13 @@ function Detail({ job, saved, onToggleSave, onClose, onScan, onNavigate }) {
   const type = jobType(job.contract_time, job.contract_type);
   const salary = cleanSalary(job.salary);
   const hue = hueFor(job.company);
-  const hasDesc = !!(job.description && job.description.trim());
+  const fullText = fullDesc?.status === "full" ? fullDesc.text : "";
+  const bodyText = fullText || job.description || "";
+  const hasDesc = !!bodyText.trim();
+  const descLoading = fullDesc?.status === "loading";
+  const descPreviewOnly = !fullText && !descLoading && job.url;
   const paras = hasDesc
-    ? job.description
+    ? bodyText
         .split(/\n+/)
         .map((p) => p.trim())
         .filter(Boolean)
@@ -535,6 +539,14 @@ function Detail({ job, saved, onToggleSave, onClose, onScan, onNavigate }) {
       </div>
 
       <div className="aj-section-h">Role Description</div>
+      {descLoading && <div className="aj-desc-note">Loading the full description…</div>}
+      {descPreviewOnly && (
+        <div className="aj-desc-note aj-desc-note--warn">
+          This is only a preview. {job.source && job.source.includes("adzuna") ? "Adzuna" : "The job board"} limits how much
+          text we can pull for this posting.{" "}
+          <a href={job.url} target="_blank" rel="noreferrer">Open the full posting</a> for the complete requirements.
+        </div>
+      )}
       {hasDesc ? (
         <div className="aj-desc-body">
           {paras.map((p, i) => (
@@ -576,6 +588,7 @@ export default function Jobs({ onNavigate }) {
   const [recent, setRecent] = useState(() => readLS(RECENT_KEY, []));
   const [selectedKey, setSelectedKey] = useState(null);
   const [viewTab, setViewTab] = useState("results");
+  const [fullDescs, setFullDescs] = useState({});
   // ZERO-CLICK AUTO-FEED FEATURE (ESLint Strict Fix)
   useEffect(() => {
     let isMounted = true;
@@ -669,42 +682,34 @@ export default function Jobs({ onNavigate }) {
     writeLS(SAVED_KEY, next);
   };
 
-  const handleScanMatch = async (job) => {
-    let fullDescription = job.description_full || job.description;
-    let isPartial = false;
-
-    // Try to scrape full description from job URL
-    if (job.url) {
-      try {
-        const res = await axios.post(
-          `${import.meta.env.VITE_AI_URL}/jobs/scrape-description`,
-          {
-            url: job.url,
-            source: job.source || "reed",
-          },
-          { timeout: 5000 }
-        );
-        if (res.data.success && res.data.description) {
-          fullDescription = res.data.description;
-        } else {
-          // Scraper failed, fallback to API description
-          isPartial = true;
-        }
-      } catch (err) {
-        // Network error, fallback to API description
-        console.warn("Scraper error:", err);
-        isPartial = true;
+  const fetchFullDescription = async (job) => {
+    try {
+      const res = await axios.post(
+        `${import.meta.env.VITE_AI_URL}/jobs/scrape-description`,
+        { url: job.url, source: job.source || "reed" },
+        { timeout: 15000 },
+      );
+      if (res.data.success && res.data.description) {
+        return { status: "full", text: res.data.description };
       }
+    } catch (err) {
+      console.warn("Description fetch error:", err);
     }
+    return { status: "partial", text: "" };
+  };
 
-    const payload = {
-      title: job.title,
-      company: job.company,
-      description: fullDescription,
-      isPartial: isPartial,
-    };
-    sessionStorage.setItem("arivo_pending_scan", JSON.stringify(payload));
-    if (job.url) window.open(job.url, "_blank");
+  const handleScanMatch = async (job) => {
+    const cached = fullDescs[jobKey(job)];
+    const result = cached && cached.status !== "loading" ? cached : job.url ? await fetchFullDescription(job) : { status: "partial", text: "" };
+    const isPartial = result.status !== "full";
+    const description = isPartial ? job.description_full || job.description : result.text;
+
+    sessionStorage.setItem(
+      "arivo_pending_scan",
+      JSON.stringify({ title: job.title, company: job.company, description, isPartial, url: job.url || "" }),
+    );
+    // Only send the user to the listing when we could not get the whole text
+    if (isPartial && job.url) window.open(job.url, "_blank");
     if (onNavigate) onNavigate("ats");
   };
   const baseList = viewTab === "saved" ? savedJobs : jobs;
@@ -717,6 +722,21 @@ export default function Jobs({ onNavigate }) {
         )
       : filtered;
   const active = displayed.find((j) => jobKey(j) === selectedKey) || null;
+
+  const activeKey = active ? jobKey(active) : null;
+  const activeUrl = active?.url || "";
+  const activeHasEntry = activeKey ? activeKey in fullDescs : true;
+  useEffect(() => {
+    if (!activeKey || !activeUrl || activeHasEntry) return undefined;
+    let alive = true;
+    fetchFullDescription(active).then((r) => {
+      if (alive) setFullDescs((prev) => ({ ...prev, [activeKey]: r }));
+    });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeKey, activeUrl, activeHasEntry]);
 
   return (
     <div className="aj-wrapper">
@@ -858,6 +878,11 @@ export default function Jobs({ onNavigate }) {
               onClose={() => setSelectedKey(null)}
               onScan={handleScanMatch}
               onNavigate={onNavigate}
+              fullDesc={
+                active
+                  ? fullDescs[jobKey(active)] || (active.url ? { status: "loading" } : null)
+                  : null
+              }
             />
           </div>
         </div>
@@ -1012,6 +1037,9 @@ const styles = `
 .aj-section-h { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--tx2); margin-bottom: 16px; }
 .aj-desc-body { font-size: 15px; line-height: 1.8; color: #cbd5e1; }
 .aj-desc-body p { margin: 0 0 20px; }
+.aj-desc-note { font-size: 13px; color: var(--tx2); margin: -6px 0 16px; line-height: 1.5; }
+.aj-desc-note--warn { color: #f5c451; background: rgba(245,196,81,0.08); border: 1px solid rgba(245,196,81,0.25); border-radius: 10px; padding: 10px 14px; }
+.aj-desc-note a { color: inherit; font-weight: 700; }
 
 /* Loading & States */
 .aj-loading { text-align: center; padding: 60px 20px; color: var(--tx2); }

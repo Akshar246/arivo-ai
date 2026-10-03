@@ -259,6 +259,11 @@ export default function ATS({ onNavigate }) {
     return readLS("arivo_ats_jobText", "");
   });
 
+  const [partialUrl] = useState(() => {
+    const pending = getPendingScan();
+    return pending && pending.isJson ? pending.data?.url || "" : "";
+  });
+
   const [isPartial, setIsPartial] = useState(() => {
     const pending = getPendingScan();
     if (pending && pending.isJson && pending.data?.isPartial) return true;
@@ -425,6 +430,7 @@ export default function ATS({ onNavigate }) {
             jobText={jobText}
             setJobText={setJobText}
             isPartial={isPartial}
+            partialUrl={partialUrl}
             setIsPartial={setIsPartial}
             file={file}
             dragOver={dragOver}
@@ -541,6 +547,7 @@ function Invite(props) {
     jobText,
     setJobText,
     isPartial,
+    partialUrl,
     setIsPartial,
     file,
     dragOver,
@@ -592,11 +599,20 @@ function Invite(props) {
               <div className="ats-partial-banner">
                 <span className="ats-partial-ic">⚡</span>
                 <div>
-                  <div className="ats-partial-t">Partial Match Imported</div>
+                  <div className="ats-partial-t">Only a preview of this job was imported</div>
                   <div className="ats-partial-s">
-                    We loaded the baseline summary from your search. Please copy
-                    the rest of the requirements from the full listing and paste
-                    them below for a 100% accurate scan.
+                    The job board blocks us from pulling the full text for this
+                    posting, so the scan would miss requirements. Open the
+                    listing, copy the full description, and paste it over the
+                    text below.
+                    {partialUrl && (
+                      <>
+                        {" "}
+                        <a href={partialUrl} target="_blank" rel="noreferrer" style={{ color: "inherit", fontWeight: 700 }}>
+                          Open the listing
+                        </a>
+                      </>
+                    )}
                   </div>
                 </div>
                 <button
