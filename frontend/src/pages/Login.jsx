@@ -256,16 +256,12 @@ export default function Login({ onLogin }) {
   const [showPw, setShowPw] = useState(false);
   const [capsOn, setCapsOn] = useState(false);
 
-  // RARE FEATURE STATE: Sponsor Radar
-  const [radarState, setRadarState] = useState({ status: "idle", count: 0 });
+  const [remember, setRemember] = useState(true);
 
   const [form, setForm] = useState({
     name: "",
     email: "",
     password: "",
-    visaStatus: "",
-    university: "",
-    targetRole: "",
   });
 
   // 🛑 ESLINT FIX 1: Push Token Catcher state updates to the next tick to prevent cascading renders
@@ -298,33 +294,6 @@ export default function Login({ onLogin }) {
     }
   }, [login, onLogin]);
 
-  // 🛑 ESLINT FIX 2: Push Radar state updates to the next tick
-  useEffect(() => {
-    if (!isRegister || form.targetRole.length < 3) {
-      const t1 = setTimeout(
-        () => setRadarState({ status: "idle", count: 0 }),
-        0,
-      );
-      return () => clearTimeout(t1);
-    }
-
-    const t2 = setTimeout(
-      () => setRadarState({ status: "scanning", count: 0 }),
-      0,
-    );
-
-    const timer = setTimeout(() => {
-      const fakeCount =
-        Math.floor(Math.random() * 500) + 200 + form.targetRole.length * 10;
-      setRadarState({ status: "found", count: fakeCount });
-    }, 800);
-
-    return () => {
-      clearTimeout(t2);
-      clearTimeout(timer);
-    };
-  }, [form.targetRole, isRegister]);
-
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
     if (error) setError("");
@@ -345,8 +314,8 @@ export default function Login({ onLogin }) {
 
     if (!emailRe.test(form.email))
       return setError("Enter a valid email address.");
-    if (form.password.length < 6)
-      return setError("Password must be at least 6 characters.");
+    if (form.password.length < 8)
+      return setError("Password must be at least 8 characters.");
     if (isRegister && !form.name.trim())
       return setError("Please enter your full name.");
 
@@ -356,10 +325,10 @@ export default function Login({ onLogin }) {
     try {
       const endpoint = isRegister ? `${API}/register` : `${API}/login`;
       const payload = isRegister
-        ? form
-        : { email: form.email, password: form.password };
+        ? { name: form.name, email: form.email, password: form.password, remember }
+        : { email: form.email, password: form.password, remember };
       const response = await axios.post(endpoint, payload);
-      login(response.data.user, response.data.token);
+      login(response.data.user, response.data.token, remember);
       onLogin();
     } catch (err) {
       console.warn("Auth Error:", err);
@@ -371,18 +340,8 @@ export default function Login({ onLogin }) {
     setLoading(false);
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // OAUTH BRIDGES (Temporarily Disabled for V1)
-  // ─────────────────────────────────────────────────────────────
-  const handleOAuth = (provider) => {
-    const providerName = provider === "google" ? "Google" : "LinkedIn";
-    setError(
-      `${providerName} SSO is coming in Version 2. Please continue with email.`,
-    );
-  };
-
   const emailValid = !!form.email && emailRe.test(form.email);
-  const pwValid = form.password.length >= 6;
+  const pwValid = form.password.length >= 8;
   const strength = pwStrength(form.password);
 
   const pwToggle = (
@@ -413,28 +372,24 @@ export default function Login({ onLogin }) {
             <span className="text-gradient">void.</span>
           </h1>
           <p className="brand-sub">
-            Join international students using our semantic engine to find
-            verified visa sponsors and map their exact skill gaps.
+            Find roles at employers on the Home Office sponsor register, and
+            see how your CV compares with real job postings.
           </p>
 
           <div className="proof-widget glass-panel">
-            <div className="proof-header">
-              <span className="live-pulse"></span>
-              <span>Live System Feed</span>
-            </div>
             <div className="proof-body">
               <div className="proof-item">
                 <div className="proof-icon emerald">{Ic.check()}</div>
                 <div>
-                  <strong>Home Office DB Synced</strong>
-                  <span>120,402 Sponsors Active</span>
+                  <strong>Sponsor register checks</strong>
+                  <span>Employers are matched against the Home Office list of licensed sponsors</span>
                 </div>
               </div>
               <div className="proof-item">
                 <div className="proof-icon violet">{Ic.cap()}</div>
                 <div>
-                  <strong>Student Match Found</strong>
-                  <span>MSc AI → Machine Learning Engineer</span>
+                  <strong>Skills from your own CV</strong>
+                  <span>Compared with live job postings for the role you want</span>
                 </div>
               </div>
             </div>
@@ -451,7 +406,7 @@ export default function Login({ onLogin }) {
             <h2>{isRegister ? "Create your account" : "Welcome back"}</h2>
             <p>
               {isRegister
-                ? "Unlock the ultimate placement toolkit, free."
+                ? "Free to use. It takes about a minute."
                 : "Sign in to pick up where you left off."}
             </p>
           </div>
@@ -474,28 +429,6 @@ export default function Login({ onLogin }) {
             >
               Create account
             </button>
-          </div>
-
-          {/* Social SSO Buttons */}
-          <div className="social-login">
-            <button
-              type="button"
-              className="btn-social"
-              onClick={() => handleOAuth("google")}
-            >
-              {Ic.google()} Google
-            </button>
-            <button
-              type="button"
-              className="btn-social"
-              onClick={() => handleOAuth("linkedin")}
-            >
-              {Ic.linkedin()} LinkedIn
-            </button>
-          </div>
-
-          <div className="divider">
-            <span>or continue with email</span>
           </div>
 
           {error && (
@@ -578,69 +511,20 @@ export default function Login({ onLogin }) {
                 )}
               </div>
 
+              <label className="remember-row">
+                <input
+                  type="checkbox"
+                  checked={remember}
+                  onChange={(e) => setRemember(e.target.checked)}
+                />
+                <span>Keep me signed in on this device</span>
+              </label>
+
               {isRegister && (
-                <div className="extended-fields animate-fade">
-                  <div className="grid-2">
-                    <Field
-                      icon={Ic.globe}
-                      label="UK Visa Status"
-                      name="visaStatus"
-                      asSelect
-                      options={[
-                        { value: "student", label: "Tier 4 Student" },
-                        { value: "graduate", label: "Graduate Route (PSW)" },
-                        { value: "none", label: "UK Citizen / ILR" },
-                      ]}
-                      value={form.visaStatus}
-                      onChange={handleChange}
-                      valid={!!form.visaStatus}
-                      placeholder="Select status..."
-                    />
-                    <Field
-                      icon={Ic.cap}
-                      label="University"
-                      name="university"
-                      value={form.university}
-                      onChange={handleChange}
-                      valid={!!form.university.trim()}
-                      placeholder="e.g. Imperial College"
-                    />
-                  </div>
-
-                  <div className="radar-field-group">
-                    <Field
-                      icon={Ic.target}
-                      label="Target Role"
-                      name="targetRole"
-                      value={form.targetRole}
-                      onChange={handleChange}
-                      valid={!!form.targetRole.trim()}
-                      placeholder="e.g. Data Analyst"
-                    />
-
-                    {radarState.status !== "idle" && (
-                      <div className="radar-popup animate-pop">
-                        {radarState.status === "scanning" ? (
-                          <>
-                            <span className="radar-spinner"></span> Scanning
-                            Home Office DB...
-                          </>
-                        ) : (
-                          <>
-                            <span className="radar-check">⚡</span>{" "}
-                            <strong>{radarState.count}+</strong> Tier 2 Sponsors
-                            found for this role!
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  <p className="privacy-note">
-                    {Ic.lock()} We use this data to instantly calculate your
-                    semantic skill gaps upon login.
-                  </p>
-                </div>
+                <p className="privacy-note animate-fade">
+                  {Ic.lock()} We only use your details to personalise Arivo. You can
+                  delete your account and data any time from your profile.
+                </p>
               )}
             </div>
 
@@ -690,7 +574,6 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 .glass-panel { background: rgba(20, 20, 30, 0.4); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 20px; }
 .proof-widget { padding: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); }
 .proof-header { display: flex; align-items: center; gap: 8px; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #8B949E; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 12px; }
-.live-pulse { width: 8px; height: 8px; background: #10B981; border-radius: 50%; box-shadow: 0 0 10px #10B981; animation: pulse 2s infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 .proof-body { display: flex; flex-direction: column; gap: 16px; }
 .proof-item { display: flex; align-items: center; gap: 12px; }
@@ -747,11 +630,8 @@ select.input-element option { background: #0f0f18; color: #fff; }
 .active-s3 { background: #10B981; box-shadow: 0 0 8px rgba(16, 185, 129, 0.4); }
 .s-label { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; width: 45px; text-align: right; }
 .s-label.s0, .s-label.s1 { color: #EF4444; } .s-label.s2 { color: #F59E0B; } .s-label.s3 { color: #10B981; }
-.radar-field-group { display: flex; flex-direction: column; gap: 8px; }
-.radar-popup { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 10px; font-size: 0.85rem; color: #99f5e4; margin-top: 4px; }
-.radar-spinner { width: 14px; height: 14px; border: 2px solid rgba(16, 185, 129, 0.3); border-top-color: #10B981; border-radius: 50%; animation: spin 1s linear infinite; display: inline-block; }
-.radar-check { font-size: 14px; }
-.radar-popup strong { color: #fff; font-weight: 800; }
+.remember-row { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: #A0AEC0; cursor: pointer; margin-top: 4px; }
+.remember-row input { width: 16px; height: 16px; accent-color: #8B5CF6; cursor: pointer; }
 .privacy-note { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: #718096; margin-top: 8px; }
 .privacy-note svg { width: 12px; height: 12px; }
 .btn-submit { width: 100%; padding: 14px; border: none; border-radius: 12px; background: linear-gradient(135deg, #8B5CF6, #D946EF); color: #fff; font-size: 1rem; font-weight: 700; cursor: pointer; transition: all 0.3s; box-shadow: 0 8px 20px rgba(139, 92, 246, 0.3); margin-top: 8px; }

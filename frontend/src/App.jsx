@@ -4,6 +4,7 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Jobs from "./pages/Jobs";
 import Profile from "./pages/Profile";
+import Onboarding from "./pages/Onboarding";
 import Chat from "./components/Chat";
 import Landing from "./pages/Landing";
 import ATS from "./pages/ATS";
@@ -282,6 +283,12 @@ function AppRouter() {
       return <Landing onGetStarted={() => setShowLanding(false)} />;
     }
     return <Login onLogin={() => setPage("dashboard")} />;
+  }
+
+  // New account that has not answered the onboarding questions yet.
+  // Sessions saved before onboarding existed have no flag and skip this.
+  if (currentUser.onboarded === false) {
+    return <Onboarding onDone={() => setPage("profile")} />;
   }
 
   // Logged in — Render the correct protected page

@@ -44,10 +44,17 @@ const userSchema = new mongoose.Schema(
       default: "", // e.g. "ML Engineer", "Data Scientist"
     },
 
+    // Set during onboarding. Empty until the student tells us.
     visaType: {
       type: String,
-      default: "Student Visa",
+      default: "",
     },
+
+    visaEndDate: { type: Date, default: null },
+
+    lookingFor: { type: [String], default: [] },
+
+    onboardedAt: { type: Date, default: null },
 
     // Shared career data read and written by Profile, ATS and Jobs
     careerProfile: {

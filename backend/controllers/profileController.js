@@ -1,6 +1,11 @@
 const User = require("../models/User");
+const Application = require("../models/Application");
+const bcrypt = require("bcryptjs");
 
 const gone = (res) => res.status(401).json({ message: "Account not found. Log in again." });
+
+const VISA_TYPES = ["Student visa", "Graduate visa", "Skilled Worker visa", "UK citizen / settled", "Other"];
+const LOOKING_FOR = ["Graduate job", "Internship", "Placement year", "Part-time"];
 
 const clean = (s, max = 80) => String(s || "").trim().slice(0, max);
 
@@ -9,6 +14,9 @@ const publicProfile = (user) => {
   return {
     targetRole: user.targetRole || "",
     visaType: user.visaType || "",
+    visaEndDate: user.visaEndDate || null,
+    lookingFor: user.lookingFor || [],
+    onboarded: !!user.onboardedAt,
     skills: cp.skills || [],
     cvUploadedAt: cp.cvUploadedAt || null,
     hasCv: !!cp.cvText,
@@ -34,7 +42,24 @@ const updateProfile = async (req, res) => {
   try {
     const update = {};
     if (req.body.targetRole !== undefined) update.targetRole = clean(req.body.targetRole, 100);
-    if (req.body.visaType !== undefined) update.visaType = clean(req.body.visaType, 60);
+    if (req.body.visaType !== undefined) {
+      const v = clean(req.body.visaType, 60);
+      if (v && !VISA_TYPES.includes(v)) return res.status(400).json({ message: "Unknown visa type" });
+      update.visaType = v;
+    }
+    if (req.body.visaEndDate !== undefined) {
+      if (!req.body.visaEndDate) update.visaEndDate = null;
+      else {
+        const d = new Date(req.body.visaEndDate);
+        if (Number.isNaN(d.getTime())) return res.status(400).json({ message: "Invalid visa end date" });
+        update.visaEndDate = d;
+      }
+    }
+    if (req.body.lookingFor !== undefined) {
+      const list = Array.isArray(req.body.lookingFor) ? req.body.lookingFor : [];
+      update.lookingFor = [...new Set(list.filter((x) => LOOKING_FOR.includes(x)))];
+    }
+    if (req.body.onboarded === true) update.onboardedAt = new Date();
     const user = await User.findByIdAndUpdate(req.user.id, update, { new: true });
     if (!user) return gone(res);
     res.json(publicProfile(user));
@@ -148,4 +173,19 @@ const saveAts = async (req, res) => {
   }
 };
 
-module.exports = { getProfile, updateProfile, setSkills, saveGap, setPlanItem, saveAts };
+// Permanently deletes the account and everything stored for it
+const deleteAccount = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return gone(res);
+    const ok = await bcrypt.compare(String(req.body?.password || ""), user.password);
+    if (!ok) return res.status(400).json({ message: "Incorrect password." });
+    await Application.deleteMany({ user: user._id });
+    await User.deleteOne({ _id: user._id });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ message: "Could not delete account" });
+  }
+};
+
+module.exports = { deleteAccount, getProfile, updateProfile, setSkills, saveGap, setPlanItem, saveAts };

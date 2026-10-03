@@ -3,6 +3,7 @@ import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import { useCareerProfile } from "../hooks/useCareerProfile";
 import { useApplications, STATUSES } from "../hooks/useApplications";
+import { VISA_TYPES, NEEDS_END_DATE, LOOKING_FOR } from "../constants/profileOptions";
 
 const CV_ENDPOINT = `${import.meta.env.VITE_API_URL}/api/cv/upload`;
 const GAP_ENDPOINT = `${import.meta.env.VITE_AI_URL}/skill-gap/analyse`;
@@ -676,10 +677,137 @@ function InterviewPrep({ apps, skills, targetRole, missing, flash, setPrep, init
 }
 
 // ─────────────────────────────────────────────
+// YOUR DETAILS + YOUR DATA
+// ─────────────────────────────────────────────
+function DetailsCard({ profile, updateProfile, flash }) {
+  const [visaType, setVisaType] = useState(profile.visaType || "");
+  const [endDate, setEndDate] = useState(profile.visaEndDate ? profile.visaEndDate.slice(0, 10) : "");
+  const [lookingFor, setLookingFor] = useState(profile.lookingFor || []);
+  const [saving, setSaving] = useState(false);
+
+  const dirty =
+    visaType !== (profile.visaType || "") ||
+    endDate !== (profile.visaEndDate ? profile.visaEndDate.slice(0, 10) : "") ||
+    lookingFor.join("|") !== (profile.lookingFor || []).join("|");
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await updateProfile({
+        visaType: VISA_TYPES.some((v) => v.value === visaType) ? visaType : undefined,
+        visaEndDate: NEEDS_END_DATE.includes(visaType) ? endDate : "",
+        lookingFor,
+      });
+      flash("success", "Details saved");
+    } catch (err) {
+      flash("error", err.response?.data?.message || "Could not save details");
+    }
+    setSaving(false);
+  };
+
+  const toggle = (v) => setLookingFor((p) => (p.includes(v) ? p.filter((x) => x !== v) : [...p, v]));
+  const legacy = visaType && !VISA_TYPES.some((v) => v.value === visaType);
+
+  return (
+    <div className="prof-block">
+      <div className="prof-block-title">Your details</div>
+      <div className="prof-details">
+        <label className="prof-field">
+          <span>UK visa</span>
+          <select className="prof-select prof-select--wide" value={visaType} onChange={(e) => setVisaType(e.target.value)}>
+            <option value="">{legacy ? `${visaType} (please re-select)` : "Not set"}</option>
+            {VISA_TYPES.map((v) => (
+              <option key={v.value} value={v.value}>{v.value}</option>
+            ))}
+          </select>
+        </label>
+        {NEEDS_END_DATE.includes(visaType) && (
+          <label className="prof-field">
+            <span>Visa end date (optional)</span>
+            <input className="prof-input" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          </label>
+        )}
+        <div className="prof-field">
+          <span>Looking for</span>
+          <div className="prof-tags">
+            {LOOKING_FOR.map((v) => (
+              <button
+                key={v}
+                type="button"
+                className={`prof-tag prof-tag--btn ${lookingFor.includes(v) ? "prof-tag--good" : ""}`}
+                aria-pressed={lookingFor.includes(v)}
+                onClick={() => toggle(v)}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <button className="prof-primary" onClick={save} disabled={!dirty || saving}>
+            {saving ? "Saving…" : "Save details"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeleteAccount({ token, onDeleted, flash }) {
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const remove = async () => {
+    setBusy(true);
+    try {
+      await axios.delete(`${import.meta.env.VITE_API_URL}/api/profile`, {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { password },
+      });
+      onDeleted();
+    } catch (err) {
+      flash("error", err.response?.data?.message || "Could not delete account");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="prof-block">
+      <div className="prof-block-title">Your data</div>
+      <p className="prof-hint prof-hint--left">
+        We store your account details, skills, CV text, saved jobs and interview packs so Arivo can personalise itself.
+        Deleting your account removes all of it permanently.
+      </p>
+      {!open ? (
+        <button className="prof-link-btn prof-danger" onClick={() => setOpen(true)}>Delete my account</button>
+      ) : (
+        <div className="prof-delete">
+          <input
+            className="prof-input"
+            type="password"
+            placeholder="Enter your password to confirm"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+          />
+          <button className="prof-link-btn prof-danger" onClick={remove} disabled={busy || !password}>
+            {busy ? "Deleting…" : "Permanently delete"}
+          </button>
+          <button className="prof-link-btn" onClick={() => { setOpen(false); setPassword(""); }} disabled={busy}>
+            Cancel
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
 // MAIN PROFILE
 // ─────────────────────────────────────────────
 export default function Profile({ onNavigate }) {
-  const { currentUser, token } = useAuth();
+  const { currentUser, token, logout } = useAuth();
   const { profile, loading, error, setProfile, updateProfile, saveSkills, saveGap, setPlanItem } =
     useCareerProfile();
 
@@ -1014,6 +1142,8 @@ export default function Profile({ onNavigate }) {
                 Browse {targetRole} jobs
               </button>
             )}
+            <DetailsCard profile={profile} updateProfile={updateProfile} flash={flash} />
+            <DeleteAccount token={token} onDeleted={logout} flash={flash} />
           </div>
         )}
 
@@ -1737,6 +1867,14 @@ const CSS = `
 .prof-req { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--s2); border: 1px solid var(--bd); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
 .prof-req-text { flex: 1; min-width: 0; }
 .prof-ask { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6; color: var(--tx2); }
+
+.prof-details { display: flex; flex-direction: column; gap: 16px; }
+.prof-field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--tx2); }
+.prof-tag--btn { border: none; cursor: pointer; background: var(--s2); color: var(--tx2); font-family: inherit; }
+.prof-tag--btn.prof-tag--good { background: rgba(0,212,170,0.12); color: var(--tl); }
+.prof-danger { color: var(--red); }
+.prof-delete { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.prof-delete .prof-input { flex: 1; min-width: 200px; }
 
 /* TRACKER */
 .prof-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; align-items: start; }

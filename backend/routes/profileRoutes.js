@@ -6,6 +6,7 @@ const c = require("../controllers/profileController");
 router.use(protect);
 router.get("/", c.getProfile);
 router.put("/", c.updateProfile);
+router.delete("/", c.deleteAccount);
 router.put("/skills", c.setSkills);
 router.put("/gap", c.saveGap);
 router.patch("/plan", c.setPlanItem);

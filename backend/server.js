@@ -45,6 +45,9 @@ connectDB();
 // Initialize Express App
 const app = express();
 
+// Behind Render/other proxies req.ip would otherwise be the proxy for everyone
+app.set("trust proxy", 1);
+
 // ─────────────────────────────────────────────
 // MIDDLEWARE
 // ─────────────────────────────────────────────

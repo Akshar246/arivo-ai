@@ -6,24 +6,41 @@ const axios = require("axios");
 // ─────────────────────────────────────────────
 // STANDARD EMAIL/PASSWORD AUTH
 // ─────────────────────────────────────────────
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+const authUser = (user) => ({
+  id: user._id,
+  name: user.name,
+  email: user.email,
+  targetRole: user.targetRole,
+  visaType: user.visaType,
+  onboarded: !!user.onboardedAt,
+});
+
+const signToken = (user, remember = false) =>
+  jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: remember ? "30d" : "7d" });
+
 const register = async (req, res) => {
   try {
-    const { name, email, password, nationality, university, course, targetRole } = req.body;
-    const existingUser = await User.findOne({ email });
+    const name = String(req.body.name || "").trim();
+    const email = String(req.body.email || "").trim().toLowerCase();
+    const password = String(req.body.password || "");
 
-    if (existingUser) return res.status(400).json({ message: "Email already registered" });
+    if (!name) return res.status(400).json({ message: "Please enter your full name." });
+    if (name.length > 80) return res.status(400).json({ message: "That name is too long." });
+    if (!EMAIL_RE.test(email)) return res.status(400).json({ message: "Enter a valid email address." });
+    // bcrypt ignores everything past 72 bytes, so cap it rather than silently truncate
+    if (password.length < 8) return res.status(400).json({ message: "Password must be at least 8 characters." });
+    if (Buffer.byteLength(password) > 72) return res.status(400).json({ message: "Password is too long (72 bytes max)." });
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    if (await User.findOne({ email })) {
+      return res.status(400).json({ message: "An account with this email already exists. Try logging in." });
+    }
 
-    const user = await User.create({
-      name, email, password: hashedPassword,
-      nationality, university, course, targetRole,
-    });
+    const hashedPassword = await bcrypt.hash(password, await bcrypt.genSalt(10));
+    const user = await User.create({ name, email, password: hashedPassword });
 
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
-
-    res.status(201).json({ token, user: { id: user._id, name: user.name, email: user.email, targetRole: user.targetRole } });
+    res.status(201).json({ token: signToken(user, !!req.body.remember), user: authUser(user) });
   } catch (error) {
     console.error("Register error:", error.message);
     res.status(500).json({ message: "Server error during registration" });
@@ -32,17 +49,14 @@ const register = async (req, res) => {
 
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
-    const user = await User.findOne({ email });
+    const email = String(req.body.email || "").trim().toLowerCase();
+    const password = String(req.body.password || "");
 
-    if (!user) return res.status(400).json({ message: "Invalid credentials" });
+    const user = email ? await User.findOne({ email }) : null;
+    const isMatch = user ? await bcrypt.compare(password, user.password) : false;
+    if (!isMatch) return res.status(400).json({ message: "Incorrect email or password." });
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
-
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
-
-    res.status(200).json({ token, user: { id: user._id, name: user.name, email: user.email, targetRole: user.targetRole } });
+    res.status(200).json({ token: signToken(user, !!req.body.remember), user: authUser(user) });
   } catch (error) {
     console.error("Login error:", error.message);
     res.status(500).json({ message: "Server error during login" });
