@@ -30,6 +30,15 @@ const writeLS = (key, value) => {
 
 const jobKey = (j) => j.url || `${j.title}__${j.company}`;
 
+// How likely we can show the whole posting: Reed has an official details API,
+// Adzuna "details" pages are readable, Adzuna "land" links are bot-blocked.
+const descQuality = (j) => {
+  const u = j.url || "";
+  if (u.includes("reed.co.uk")) return 2;
+  if (u.includes("/jobs/details/")) return 1;
+  return 0;
+};
+
 const postedAgo = (iso) => {
   if (!iso) return "";
   const then = new Date(iso);
@@ -268,6 +277,9 @@ function ListCard({ job, active, saved, onSelect, onToggleSave }) {
           <span className="aj-badge aj-badge--mode">
             {workModeLabel(job.work_mode)}
           </span>
+        )}
+        {descQuality(job) === 2 && (
+          <span className="aj-badge aj-badge--type">Full description</span>
         )}
       </div>
       <div className="aj-lc-posted-row">
@@ -729,7 +741,9 @@ export default function Jobs({ onNavigate }) {
   const displayed =
     sortBy === "sponsors"
       ? [...filtered].sort(
-          (a, b) => (b.visa_sponsor ? 1 : 0) - (a.visa_sponsor ? 1 : 0),
+          (a, b) =>
+            (b.visa_sponsor ? 1 : 0) - (a.visa_sponsor ? 1 : 0) ||
+            descQuality(b) - descQuality(a),
         )
       : filtered;
   const active = displayed.find((j) => jobKey(j) === selectedKey) || null;

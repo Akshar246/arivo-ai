@@ -6,6 +6,7 @@ import { useApplications, STATUSES } from "../hooks/useApplications";
 
 const CV_ENDPOINT = `${import.meta.env.VITE_API_URL}/api/cv/upload`;
 const GAP_ENDPOINT = `${import.meta.env.VITE_AI_URL}/skill-gap/analyse`;
+const AI_URL = import.meta.env.VITE_AI_URL;
 
 // ─────────────────────────────────────────────
 // UTILITIES
@@ -306,6 +307,375 @@ const hasSkill = (skills, req) => {
 const SOURCE_LABEL = { cv: "From CV", manual: "Added by you", learned: "Learned" };
 
 // ─────────────────────────────────────────────
+// INTERVIEW PREP
+// Pack per tracked job (requirements, questions, questions to ask),
+// written or spoken answers, and feedback with a UK-interview lens.
+// ─────────────────────────────────────────────
+const TYPE_LABEL = { technical: "Technical", gap: "Skill gap", behavioural: "Behavioural", motivation: "Motivation" };
+
+const SpeechRec = typeof window !== "undefined" ? window.SpeechRecognition || window.webkitSpeechRecognition : null;
+const FILLERS = ["you know", "sort of", "kind of", "basically", "actually", "literally", "like"];
+
+const countFillers = (text) => {
+  const t = ` ${text.toLowerCase().replace(/[^a-z' ]/g, " ")} `;
+  const found = {};
+  FILLERS.forEach((f) => {
+    const n = (t.match(new RegExp(`\\s${f}\\s`, "g")) || []).length;
+    if (n) found[f] = n;
+  });
+  return found;
+};
+
+const nowMs = () => Date.now();
+
+const mentionsSkill = (text, skills) =>
+  skills.filter((s) => {
+    const n = s.name.trim();
+    if (n.length < 2) return false;
+    return new RegExp(`(^|[^a-z0-9])${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}($|[^a-z0-9])`, "i").test(text);
+  });
+
+function InterviewPrep({ apps, skills, targetRole, missing, flash, setPrep, initialPick, autoStart }) {
+  const [pick, setPick] = useState(initialPick || "role");
+  const [loading, setLoading] = useState(false);
+  const [sessions, setSessions] = useState({});
+  const [answers, setAnswers] = useState({});
+  const [feedback, setFeedback] = useState({});
+  const [busy, setBusy] = useState(null);
+  const [recKey, setRecKey] = useState(null);
+  const [elapsed, setElapsed] = useState(0);
+  const [speech, setSpeech] = useState({});
+  const recRef = useRef(null);
+  const speechRef = useRef({ start: 0, base: "", spoken: "" });
+
+  const app = apps.find((a) => a._id === pick) || null;
+  const jobTitle = app ? app.title : targetRole;
+  const savedPrep = app && app.prep && app.prep.questions ? app.prep : null;
+  const current =
+    sessions[pick] ||
+    (savedPrep
+      ? {
+          questions: savedPrep.questions,
+          requirements: savedPrep.requirements || [],
+          toAsk: savedPrep.questionsToAsk || [],
+          description: savedPrep.usedDescription ? "saved" : "",
+          title: app.title,
+          company: app.company,
+        }
+      : null);
+
+  useEffect(
+    () => () => {
+      if (recRef.current) recRef.current.stop();
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!recKey) return undefined;
+    const t = setInterval(() => setElapsed(Math.round((nowMs() - speechRef.current.start) / 1000)), 500);
+    return () => clearInterval(t);
+  }, [recKey]);
+
+  const generate = async () => {
+    if (!jobTitle) return flash("error", "Set a target role or track a job first");
+    setLoading(true);
+    try {
+      let description = "";
+      if (app && app.url) {
+        try {
+          const d = await axios.post(
+            `${AI_URL}/jobs/scrape-description`,
+            {
+              url: app.url,
+              source: app.url.includes("reed.co.uk") ? "reed" : "adzuna",
+              title: app.title,
+              company: app.company,
+              location: app.location || "london",
+            },
+            { timeout: 20000 },
+          );
+          description = d.data?.success ? d.data.description : "";
+        } catch {
+          description = "";
+        }
+      }
+      const base = { job_title: jobTitle, company: app ? app.company : "", description };
+      const [qRes, pRes] = await Promise.all([
+        axios.post(`${AI_URL}/interview/questions`, {
+          ...base,
+          user_skills: skills.map((s) => s.name),
+          missing_skills: missing,
+          count: 8,
+        }),
+        description ? axios.post(`${AI_URL}/interview/pack`, base).catch(() => null) : Promise.resolve(null),
+      ]);
+      if (!qRes.data?.questions?.length) {
+        flash("error", qRes.data?.error || "No questions came back");
+      } else {
+        const next = {
+          questions: qRes.data.questions,
+          requirements: pRes?.data?.requirements || [],
+          toAsk: pRes?.data?.questions_to_ask || [],
+          description,
+          title: jobTitle,
+          company: base.company,
+        };
+        setSessions((s) => ({ ...s, [pick]: next }));
+        if (app) {
+          setPrep(app._id, {
+            questions: next.questions,
+            requirements: next.requirements,
+            questionsToAsk: next.toAsk,
+            usedDescription: !!description,
+            at: new Date().toISOString(),
+          }).catch(() => {});
+        }
+      }
+    } catch {
+      flash("error", "Could not reach the AI service");
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    if (!autoStart || savedPrep) return undefined;
+    const t = setTimeout(generate, 0);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const getFeedback = async (i) => {
+    const k = `${pick}:${i}`;
+    setBusy(k);
+    try {
+      const res = await axios.post(`${AI_URL}/interview/feedback`, {
+        question: current.questions[i].question,
+        answer: answers[k] || "",
+        job_title: current.title,
+        description: current.description && current.description !== "saved" ? current.description : "",
+      });
+      if (res.data?.error) flash("error", res.data.error);
+      else setFeedback((f) => ({ ...f, [k]: res.data }));
+    } catch {
+      flash("error", "Could not get feedback");
+    }
+    setBusy(null);
+  };
+
+  const stopSpeaking = () => {
+    if (recRef.current) recRef.current.stop();
+  };
+
+  const startSpeaking = (i) => {
+    const k = `${pick}:${i}`;
+    if (recRef.current) recRef.current.stop();
+    const rec = new SpeechRec();
+    rec.lang = "en-GB";
+    rec.continuous = true;
+    rec.interimResults = true;
+    speechRef.current = { start: nowMs(), base: answers[k] ? `${answers[k].trim()} ` : "", spoken: "" };
+    rec.onresult = (e) => {
+      let finalText = "";
+      let interim = "";
+      for (let r = 0; r < e.results.length; r += 1) {
+        const piece = e.results[r][0].transcript;
+        if (e.results[r].isFinal) finalText += `${piece} `;
+        else interim += piece;
+      }
+      speechRef.current.spoken = (finalText + interim).trim();
+      setAnswers((a) => ({ ...a, [k]: `${speechRef.current.base}${speechRef.current.spoken}` }));
+    };
+    rec.onerror = (e) => {
+      flash("error", e.error === "not-allowed" ? "Microphone access was blocked" : "Voice input stopped unexpectedly");
+    };
+    rec.onend = () => {
+      const secs = Math.max(1, Math.round((nowMs() - speechRef.current.start) / 1000));
+      const spoken = speechRef.current.spoken;
+      const words = spoken ? spoken.split(/\s+/).length : 0;
+      if (words > 0) {
+        setSpeech((s) => ({ ...s, [k]: { secs, words, wpm: Math.round((words / secs) * 60), fillers: countFillers(spoken) } }));
+      }
+      setRecKey(null);
+      recRef.current = null;
+    };
+    recRef.current = rec;
+    setElapsed(0);
+    setRecKey(k);
+    rec.start();
+  };
+
+  return (
+    <div className="prof-panel">
+      <div className="prof-panel-title">Interview practice</div>
+      <p className="prof-hint prof-hint--left">
+        Pick a job you're tracking and we'll build a pack from its description: key requirements, practice questions
+        and questions to ask. Practice material only. It can't predict what an employer will actually ask.
+      </p>
+      <div className="prof-iv-pick">
+        <select className="prof-select prof-select--wide" value={pick} onChange={(e) => setPick(e.target.value)}>
+          <option value="role">{targetRole ? `My target role: ${targetRole}` : "My target role (not set)"}</option>
+          {apps.map((a) => (
+            <option key={a._id} value={a._id}>
+              {a.title} at {a.company}
+              {a.prep && a.prep.questions ? " (pack saved)" : ""}
+            </option>
+          ))}
+        </select>
+        <button className="prof-primary" onClick={generate} disabled={loading || !jobTitle}>
+          {loading ? "Building…" : current ? "Rebuild pack" : "Build pack"}
+        </button>
+      </div>
+
+      {current && (
+        <>
+          <p className="prof-hint prof-hint--left">
+            {current.description
+              ? `Based on the full job description for ${current.title}${current.company ? ` at ${current.company}` : ""}.`
+              : "Based on the job title only, because we couldn't get the full description."}{" "}
+            Generated by AI.
+          </p>
+
+          {current.requirements.length > 0 && (
+            <div className="prof-block">
+              <div className="prof-block-title">What the posting asks for</div>
+              <div className="prof-reqs">
+                {current.requirements.map((r, i) => {
+                  const hits = mentionsSkill(r, skills);
+                  return (
+                    <div key={i} className="prof-req">
+                      <span className="prof-req-text">{r}</span>
+                      <span className={`prof-badge prof-badge--${hits.length ? "learned" : "manual"}`}>
+                        {hits.length ? `You list ${hits[0].name}` : "Not on your profile"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="prof-block">
+            <div className="prof-block-title">Practice questions</div>
+            <div className="prof-iv-list">
+              {current.questions.map((q, i) => {
+                const k = `${pick}:${i}`;
+                const fb = feedback[k];
+                const sp = speech[k];
+                const recording = recKey === k;
+                return (
+                  <div key={i} className="prof-iv-card">
+                    <div className="prof-iv-head">
+                      <span className={`prof-badge prof-badge--${q.type === "gap" ? "manual" : q.type === "technical" ? "cv" : "learned"}`}>
+                        {TYPE_LABEL[q.type] || q.type}
+                      </span>
+                      <span className="prof-iv-num">Q{i + 1}</span>
+                    </div>
+                    <div className="prof-iv-q">{q.question}</div>
+                    {q.why && <div className="prof-iv-meta"><strong>They're checking:</strong> {q.why}</div>}
+                    {q.tip && <div className="prof-iv-meta"><strong>Tip:</strong> {q.tip}</div>}
+                    <textarea
+                      className="prof-notes"
+                      rows={4}
+                      placeholder="Type your answer, or press Speak and say it out loud…"
+                      value={answers[k] || ""}
+                      onChange={(e) => setAnswers((a) => ({ ...a, [k]: e.target.value }))}
+                    />
+                    <div className="prof-app-actions">
+                      {SpeechRec ? (
+                        <button className={`prof-link-btn ${recording ? "is-rec" : ""}`} onClick={recording ? stopSpeaking : () => startSpeaking(i)}>
+                          {recording ? `Stop (${elapsed}s)` : "Speak"}
+                        </button>
+                      ) : null}
+                      <button
+                        className="prof-link-btn"
+                        onClick={() => getFeedback(i)}
+                        disabled={busy === k || recording || (answers[k] || "").trim().length < 20}
+                      >
+                        {busy === k ? "Reading your answer…" : fb ? "Get feedback again" : "Get feedback"}
+                      </button>
+                    </div>
+                    {!SpeechRec && (
+                      <div className="prof-iv-meta">Voice input needs Chrome, Edge or Safari. Typing works everywhere.</div>
+                    )}
+                    {sp && (
+                      <div className="prof-iv-stats">
+                        <span>{sp.secs}s</span>
+                        <span>{sp.words} words</span>
+                        <span>{sp.wpm} words/min</span>
+                        <span>
+                          {Object.keys(sp.fillers).length
+                            ? `Possible filler words: ${Object.entries(sp.fillers).map(([w, n]) => `"${w}" ×${n}`).join(", ")}`
+                            : "No filler words found"}
+                        </span>
+                        <div className="prof-iv-meta">
+                          Conversational pace is roughly 120 to 160 words a minute. Browsers usually leave "um" and "uh" out of
+                          the transcript, so those aren't counted.
+                        </div>
+                      </div>
+                    )}
+                    {fb && (
+                      <div className="prof-iv-fb">
+                        {fb.signals && (
+                          <div className="prof-iv-signals">
+                            <span>{fb.signals.words} words</span>
+                            <span>"I" statements: {fb.signals.i_count}</span>
+                            <span>"We" statements: {fb.signals.we_count}</span>
+                            <span>Numbers: {fb.signals.numbers}</span>
+                            {fb.signals.hedges.length > 0 && <span>Hedges: {fb.signals.hedges.join(", ")}</span>}
+                          </div>
+                        )}
+                        {fb.strengths?.length > 0 && (
+                          <>
+                            <div className="prof-iv-fb-h">Done well</div>
+                            <ul>{fb.strengths.map((x, n) => <li key={n}>{x}</li>)}</ul>
+                          </>
+                        )}
+                        {fb.improvements?.length > 0 && (
+                          <>
+                            <div className="prof-iv-fb-h">To improve</div>
+                            <ul>{fb.improvements.map((x, n) => <li key={n}>{x}</li>)}</ul>
+                          </>
+                        )}
+                        {fb.uk_lens?.length > 0 && (
+                          <>
+                            <div className="prof-iv-fb-h">How this reads to a UK interviewer</div>
+                            <ul>
+                              {fb.uk_lens.map((l, n) => (
+                                <li key={n}>{l.point}{l.fix ? ` Try: ${l.fix}` : ""}</li>
+                              ))}
+                            </ul>
+                          </>
+                        )}
+                        {fb.stronger_opening && (
+                          <>
+                            <div className="prof-iv-fb-h">A stronger opening</div>
+                            <p>{fb.stronger_opening}</p>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {current.toAsk.length > 0 && (
+            <div className="prof-block">
+              <div className="prof-block-title">Questions you could ask them</div>
+              <ul className="prof-ask">
+                {current.toAsk.map((q, i) => <li key={i}>{q}</li>)}
+              </ul>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
 // MAIN PROFILE
 // ─────────────────────────────────────────────
 export default function Profile({ onNavigate }) {
@@ -315,6 +685,7 @@ export default function Profile({ onNavigate }) {
 
   const tracker = useApplications();
   const [notesOpen, setNotesOpen] = useState(null);
+  const [ivRequest, setIvRequest] = useState({ nonce: 0, appId: null, auto: false });
   const [activeTab, setActiveTab] = useState("overview");
   const [editingRole, setEditingRole] = useState(false);
   const [roleDraft, setRoleDraft] = useState("");
@@ -444,7 +815,17 @@ export default function Profile({ onNavigate }) {
     );
     if (ok) flash("success", "Saved to your tracker");
   };
-  const changeStatus = (a, status) => run(() => tracker.setStatus(a._id, status), "Could not update status");
+  const openInterview = (a, auto) => {
+    setIvRequest((r) => ({ nonce: r.nonce + 1, appId: a._id, auto }));
+    setActiveTab("interview");
+  };
+  const changeStatus = async (a, status) => {
+    const ok = await run(() => tracker.setStatus(a._id, status), "Could not update status");
+    if (ok && status === "interview" && a.status !== "interview") {
+      flash("success", "Moved to interview. Building your prep pack…");
+      openInterview(a, true);
+    }
+  };
   const removeApp = (a) => run(() => tracker.remove(a._id), "Could not remove");
 
   const togglePlan = (item) => run(() => setPlanItem(item.skill, !item.done), "Could not update plan");
@@ -529,6 +910,7 @@ export default function Profile({ onNavigate }) {
     { id: "skills", label: "Skills", icon: Ic.sparkle },
     { id: "gap", label: "Gap & Plan", icon: Ic.briefcase },
     { id: "tracker", label: "Tracker", icon: Ic.file },
+    { id: "interview", label: "Interview", icon: Ic.mic },
   ];
 
   if (loading) {
@@ -829,6 +1211,20 @@ export default function Profile({ onNavigate }) {
           </div>
         )}
 
+        {activeTab === "interview" && (
+          <InterviewPrep
+            key={ivRequest.nonce}
+            apps={tracker.apps}
+            skills={skills}
+            targetRole={targetRole}
+            missing={gap ? stillMissing : []}
+            flash={flash}
+            setPrep={tracker.setPrep}
+            initialPick={ivRequest.appId}
+            autoStart={ivRequest.auto}
+          />
+        )}
+
         {activeTab === "tracker" && (
           <div className="prof-panel">
             <div className="prof-panel-title">Application tracker</div>
@@ -878,6 +1274,9 @@ export default function Profile({ onNavigate }) {
                           {a.notes && notesOpen !== a._id && <div className="prof-app-notes">{a.notes}</div>}
                           <div className="prof-app-actions">
                             {a.url && <a className="prof-role-link" href={a.url} target="_blank" rel="noreferrer">Posting</a>}
+                            {a.status === "interview" && (
+                              <button className="prof-link-btn" onClick={() => openInterview(a, false)}>Prep</button>
+                            )}
                             <button className="prof-link-btn" onClick={() => setNotesOpen(notesOpen === a._id ? null : a._id)}>
                               {notesOpen === a._id ? "Done" : "Notes"}
                             </button>
@@ -1312,6 +1711,32 @@ const CSS = `
 .prof-role-match { font-size: 12px; margin-top: 10px; line-height: 1.45; }
 .prof-role-link { display: inline-block; margin-top: 10px; font-size: 12px; font-weight: 600; color: var(--p2); text-decoration: none; }
 .prof-role-link:hover { text-decoration: underline; }
+
+/* INTERVIEW */
+.prof-hint--left { text-align: left; margin: 0 0 16px; }
+.prof-iv-pick { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 20px; }
+.prof-select--wide { flex: 1; min-width: 220px; text-transform: none; padding: 11px 12px; font-size: 13px; }
+.prof-iv-list { display: flex; flex-direction: column; gap: 14px; }
+.prof-iv-card { background: var(--s2); border: 1px solid var(--bd); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.prof-iv-head { display: flex; align-items: center; justify-content: space-between; }
+.prof-iv-num { font-size: 12px; font-weight: 700; color: var(--tx3); }
+.prof-iv-q { font-size: 15px; font-weight: 600; line-height: 1.5; }
+.prof-iv-meta { font-size: 12px; color: var(--tx2); line-height: 1.5; }
+.prof-iv-meta strong { color: var(--tx); font-weight: 600; }
+.prof-iv-fb { background: var(--s1); border: 1px solid var(--bd2); border-radius: 12px; padding: 12px 14px; font-size: 13px; line-height: 1.55; }
+.prof-iv-fb-h { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--p2); margin: 8px 0 4px; }
+.prof-iv-fb-h:first-child { margin-top: 0; }
+.prof-iv-fb ul { margin: 0; padding-left: 18px; color: var(--tx2); }
+.prof-iv-fb p { margin: 0; color: var(--tx2); font-style: italic; }
+
+.prof-link-btn.is-rec { color: var(--red); }
+.prof-iv-stats { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; font-weight: 600; background: var(--s1); border: 1px solid var(--bd); border-radius: 10px; padding: 10px 12px; }
+.prof-iv-stats .prof-iv-meta { flex-basis: 100%; font-weight: 400; }
+.prof-iv-signals { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11px; font-weight: 600; color: var(--tx2); padding-bottom: 8px; margin-bottom: 4px; border-bottom: 1px solid var(--bd); }
+.prof-reqs { display: flex; flex-direction: column; gap: 8px; }
+.prof-req { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--s2); border: 1px solid var(--bd); border-radius: 10px; padding: 10px 12px; font-size: 13px; }
+.prof-req-text { flex: 1; min-width: 0; }
+.prof-ask { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6; color: var(--tx2); }
 
 /* TRACKER */
 .prof-board { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; align-items: start; }

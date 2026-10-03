@@ -54,6 +54,13 @@ const update = async (req, res) => {
       if (req.body.status === "applied") set.appliedAt = new Date();
     }
     if (req.body.notes !== undefined) set.notes = clean(req.body.notes, 2000);
+    if (req.body.prep !== undefined) {
+      const prep = req.body.prep;
+      if (prep !== null && (typeof prep !== "object" || JSON.stringify(prep).length > 60000)) {
+        return res.status(400).json({ message: "Invalid prep data" });
+      }
+      set.prep = prep;
+    }
     const app = await Application.findOneAndUpdate(
       { _id: req.params.id, user: req.user.id },
       set,

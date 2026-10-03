@@ -1991,6 +1991,196 @@ Return ONLY the JSON. No explanation."""
 
 
 # ─────────────────────────────────────────────
+# INTERVIEW PREP
+# Questions come from the actual job text and the user's real skill gaps.
+# Feedback is on the user's own written answer. Nothing is scored or
+# promised: it is practice material, not a prediction.
+# ─────────────────────────────────────────────
+def _llm_json(prompt):
+    raw = llm.invoke(prompt).content.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    return json.loads(raw)
+
+
+class InterviewQuestionsRequest(BaseModel):
+    job_title: str
+    company: str = ""
+    description: str = ""
+    user_skills: list = []
+    missing_skills: list = []
+    count: int = 8
+
+
+@app.post("/interview/questions")
+def interview_questions(request: InterviewQuestionsRequest):
+    count = max(4, min(request.count, 12))
+    company_part = f" at {request.company}" if request.company else ""
+    desc = (request.description or "").strip()[:3500]
+    basis = (
+        f"Job description:\n{desc}"
+        if desc
+        else "No job description is available, so base questions on the job title only."
+    )
+    prompt = f"""You are an experienced UK hiring manager preparing interview questions
+for the role "{request.job_title}"{company_part}.
+
+{basis}
+
+Candidate's skills: {", ".join(map(str, request.user_skills[:25])) or "not provided"}
+Skills the role asks for that the candidate does NOT show: {", ".join(map(str, request.missing_skills[:10])) or "none identified"}
+
+Write exactly {count} interview questions this candidate is likely to face:
+- about half technical or role-specific, drawn from the description
+- 2 that probe the missing skills honestly (how they would close the gap)
+- 2 behavioural questions (answerable with the STAR method)
+- 1 about motivation for this role or company
+
+Return ONLY a JSON array. Each item:
+{{"question": "...", "type": "technical" | "gap" | "behavioural" | "motivation",
+  "why": "one sentence on what the interviewer is checking",
+  "tip": "one sentence on how to structure a strong answer"}}"""
+    try:
+        items = _llm_json(prompt)
+        questions = [
+            {
+                "question": str(i.get("question", "")).strip(),
+                "type": i.get("type", "technical"),
+                "why": str(i.get("why", "")).strip(),
+                "tip": str(i.get("tip", "")).strip(),
+            }
+            for i in items
+            if isinstance(i, dict) and i.get("question")
+        ]
+        return {"questions": questions[:count], "used_description": bool(desc)}
+    except Exception as e:
+        print(f"Interview questions error: {e}")
+        return {"questions": [], "error": "Could not generate questions. Try again."}
+
+
+_HEDGES = [
+    "i think", "i guess", "maybe", "kind of", "sort of", "a bit", "a little",
+    "probably", "hopefully", "not sure", "i just", "just a", "only a",
+]
+
+
+def answer_signals(answer):
+    # Plain counts from the answer itself: nothing inferred, nothing scored
+    words = re.findall(r"[A-Za-z']+", answer)
+    low = [w.lower() for w in words]
+    lowered = answer.lower()
+    return {
+        "words": len(words),
+        "i_count": sum(1 for w in low if w in ("i", "i'm", "i've", "i'd", "i'll", "my", "me")),
+        "we_count": sum(1 for w in low if w in ("we", "we're", "we've", "we'd", "our", "us")),
+        "numbers": len(
+            re.findall(
+                r"£\s?\d[\d,.]*|\d[\d,.]*\s?%|\b\d+(?:[.,]\d+)?\b"
+                r"|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
+                r"twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|"
+                r"million|percent|per cent|double|triple|half)\b",
+                answer,
+                flags=re.I,
+            )
+        ),
+        "hedges": [h for h in _HEDGES if h in lowered],
+    }
+
+
+class InterviewFeedbackRequest(BaseModel):
+    question: str
+    answer: str
+    job_title: str = ""
+    description: str = ""
+
+
+@app.post("/interview/feedback")
+def interview_feedback(request: InterviewFeedbackRequest):
+    answer = (request.answer or "").strip()
+    if len(answer) < 20:
+        return {"error": "Write a fuller answer first (at least a couple of sentences)."}
+    desc = (request.description or "").strip()[:2000]
+    desc_block = ("Job description excerpt:\n" + desc) if desc else ""
+    signals = answer_signals(answer)
+    prompt = f"""You are a direct, fair UK interviewer giving feedback on a practice answer.
+
+Role: {request.job_title or "not specified"}
+{desc_block}
+
+Question: {request.question}
+
+Candidate's answer:
+{answer[:2500]}
+
+Give honest, specific feedback on THIS answer only. Do not invent facts about the
+candidate, and do not give a score or predict whether they would get the job.
+
+Counts taken from the answer: {signals}
+
+Also give a "uk_lens": 1-3 notes on how the answer reads to a UK interviewer, based
+ONLY on the wording and the counts above. Look at: whether the candidate's own
+contribution is clear (I vs we), whether results are concrete or quantified, whether
+hedging softens strong points, and whether there is a specific example. Do NOT
+comment on or assume anything about the candidate's nationality, accent or culture.
+
+Return ONLY a JSON object:
+{{"strengths": ["1-3 specific things done well"],
+  "improvements": ["2-3 specific, actionable changes"],
+  "uk_lens": [{{"point": "what the wording shows", "fix": "a concrete rewrite or change"}}],
+  "stronger_opening": "a one or two sentence rewrite of how the answer could start. Use only facts the candidate gave and keep their own verbs (do not upgrade 'built' to 'led')"}}"""
+    try:
+        data = _llm_json(prompt)
+        return {
+            "strengths": [str(x) for x in data.get("strengths", [])][:3],
+            "improvements": [str(x) for x in data.get("improvements", [])][:3],
+            "stronger_opening": str(data.get("stronger_opening", "")).strip(),
+            "uk_lens": [
+                {"point": str(i.get("point", "")).strip(), "fix": str(i.get("fix", "")).strip()}
+                for i in data.get("uk_lens", [])
+                if isinstance(i, dict) and i.get("point")
+            ][:3],
+            "signals": signals,
+        }
+    except Exception as e:
+        print(f"Interview feedback error: {e}")
+        return {"error": "Could not generate feedback. Try again."}
+
+
+class InterviewPackRequest(BaseModel):
+    job_title: str
+    company: str = ""
+    description: str = ""
+
+
+@app.post("/interview/pack")
+def interview_pack(request: InterviewPackRequest):
+    # Requirements and questions to ask, taken from the posting. No claims about
+    # the company beyond what the job text itself says.
+    desc = (request.description or "").strip()[:3500]
+    if not desc:
+        return {"error": "No job description available to build a pack from."}
+    company_part = f" at {request.company}" if request.company else ""
+    prompt = f"""Read this job description for "{request.job_title}"{company_part}.
+
+{desc}
+
+Return ONLY a JSON object:
+{{"requirements": ["the 6 most important concrete requirements, each under 12 words, in the posting's own terms"],
+  "questions_to_ask": ["5 thoughtful questions the candidate could ask the interviewer, specific to this role's responsibilities in the text. Do not assert any facts about the company that the text does not state."]}}"""
+    try:
+        data = _llm_json(prompt)
+        return {
+            "requirements": [str(x).strip() for x in data.get("requirements", []) if str(x).strip()][:6],
+            "questions_to_ask": [str(x).strip() for x in data.get("questions_to_ask", []) if str(x).strip()][:5],
+        }
+    except Exception as e:
+        print(f"Interview pack error: {e}")
+        return {"error": "Could not build the pack. Try again."}
+
+
+# ─────────────────────────────────────────────
 # Always keep this at the very bottom
 # This only runs when you execute main.py directly
 # Not when uvicorn imports it

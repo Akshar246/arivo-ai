@@ -96,6 +96,7 @@ export function useApplications() {
     add,
     setStatus: (id, status) => patch(id, { status }),
     setNotes: (id, notes) => patch(id, { notes }),
+    setPrep: (id, prep) => patch(id, { prep }),
     remove,
   };
 }

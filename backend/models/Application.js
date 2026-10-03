@@ -16,6 +16,8 @@ const applicationSchema = new mongoose.Schema(
     },
     notes: { type: String, default: "" },
     appliedAt: { type: Date, default: null },
+    // Saved interview pack: { requirements, questionsToAsk, questions, usedDescription, at }
+    prep: { type: mongoose.Schema.Types.Mixed, default: null },
   },
   { timestamps: true }
 );
