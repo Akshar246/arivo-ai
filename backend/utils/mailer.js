@@ -1,12 +1,15 @@
 const axios = require("axios");
 
-const FROM = () => process.env.MAIL_FROM || "Arivo AI <onboarding@resend.dev>";
+// Values pasted into a host's settings page often pick up spaces, newlines or wrapping quotes
+const env = (name) => (process.env[name] || "").trim().replace(/^["']|["']$/g, "").trim();
+
+const FROM = () => env("MAIL_FROM") || "Arivo AI <onboarding@resend.dev>";
 
 // Sends through Resend's REST API. Without RESEND_API_KEY nothing is sent:
 // in development the message is printed so the flow can still be tested,
 // in production it is logged as a misconfiguration (never the link itself).
 async function sendMail({ to, subject, text, html }) {
-  const key = process.env.RESEND_API_KEY;
+  const key = env("RESEND_API_KEY");
   if (!key) {
     if (process.env.NODE_ENV === "production") {
       console.error(`Mail not sent to ${to}: RESEND_API_KEY is not set`);
@@ -15,11 +18,17 @@ async function sendMail({ to, subject, text, html }) {
     }
     return { sent: false };
   }
-  await axios.post(
-    "https://api.resend.com/emails",
-    { from: FROM(), to: [to], subject, text, html },
-    { headers: { Authorization: `Bearer ${key}` }, timeout: 15000 },
-  );
+  try {
+    await axios.post(
+      "https://api.resend.com/emails",
+      { from: FROM(), to: [to], subject, text, html },
+      { headers: { Authorization: `Bearer ${key}` }, timeout: 15000 },
+    );
+  } catch (err) {
+    // Resend explains refusals in the response body; the bare status code hides the cause
+    const detail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+    throw new Error(`Resend rejected the email (${err.response?.status || "no response"}): ${detail}`);
+  }
   return { sent: true };
 }
 
