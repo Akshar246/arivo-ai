@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import { trackJob, untrackJob } from "../hooks/useApplications";
+import { LOOKING_FOR, defaultKind, matchesKind, searchBody } from "../constants/profileOptions";
 
 // ─────────────────────────────────────────────────────────────
 // JOBS PAGE · Arivo AI (V2 Premium Architecture)
@@ -574,6 +575,7 @@ export default function Jobs({ onNavigate }) {
     return context.targetRole || "Software Engineer";
   });
   const [location, setLocation] = useState("London");
+  const [kind, setKind] = useState(() => defaultKind(readLS("arivo_pf_context", {}).lookingFor));
   const [category] = useState("");
   // eslint-disable-next-line no-unused-vars
   const [categories, setCategories] = useState([]);
@@ -598,8 +600,7 @@ export default function Jobs({ onNavigate }) {
         const res = await axios.post(
           `${import.meta.env.VITE_AI_URL}/jobs/search`,
           {
-            query: query,
-            location: location,
+            ...searchBody(query, kind, location),
             category: category || undefined,
           },
         );
@@ -640,7 +641,7 @@ export default function Jobs({ onNavigate }) {
       });
   }, []);
 
-  const runSearch = async (term = query, loc = location) => {
+  const runSearch = async (term = query, loc = location, k = kind) => {
     const q = term.trim();
     if (!q) return;
     setQuery(q);
@@ -653,8 +654,7 @@ export default function Jobs({ onNavigate }) {
       const res = await axios.post(
         `${import.meta.env.VITE_AI_URL}/jobs/search`,
         {
-          query: q,
-          location: loc,
+          ...searchBody(q, k, loc),
           category: category || undefined,
         },
       );
@@ -720,7 +720,9 @@ export default function Jobs({ onNavigate }) {
     if (onNavigate) onNavigate("ats");
   };
   const baseList = viewTab === "saved" ? savedJobs : jobs;
-  const filtered = visaOnly ? baseList.filter((j) => j.visa_sponsor) : baseList;
+  const byKind = baseList.filter((j) => matchesKind(j, kind));
+  const filtered = visaOnly ? byKind.filter((j) => j.visa_sponsor) : byKind;
+  const kindHidAll = kind && baseList.length > 0 && byKind.length === 0;
 
   const displayed =
     sortBy === "sponsors"
@@ -809,6 +811,21 @@ export default function Jobs({ onNavigate }) {
           </button>
         </div>
 
+        <div className="aj-view-tabs aj-kinds" role="group" aria-label="Role type">
+          {["", ...LOOKING_FOR].map((k) => (
+            <button
+              key={k || "any"}
+              className={kind === k ? "active" : ""}
+              onClick={() => {
+                setKind(k);
+                if (k === "Part-time" || kind === "Part-time") runSearch(query, location, k);
+              }}
+            >
+              {k || "Any type"}
+            </button>
+          ))}
+        </div>
+
         <div className="aj-controls-row">
           <div className="aj-tabs">
             <button
@@ -856,7 +873,9 @@ export default function Jobs({ onNavigate }) {
               <div className="aj-msg-card">
                 <h3>No roles found</h3>
                 <p>
-                  Try adjusting your search terms or expanding your location.
+                  {kindHidAll
+                    ? `None of these ${baseList.length} results read as ${kind.toLowerCase()} roles from their title or description. Choose "Any type" to see them all.`
+                    : "Try adjusting your search terms or expanding your location."}
                 </p>
               </div>
             ) : (
@@ -939,7 +958,7 @@ const styles = `
 .aj-tabs button.active {background:rgba(var(--c-green-rgb),0.15);color:var(--pur);}
 .aj-visa-toggle {display:flex;align-items:center;gap:8px;background:transparent;border:1px solid var(--teal);color:var(--teal);padding:8px 16px;border-radius:99px;font-size:13px;font-weight:700;cursor:pointer;transition:all 0.2s;}
 .aj-visa-toggle:hover {background:rgba(var(--c-ok-rgb),0.1);}
-.aj-visa-toggle.is-on {background:var(--teal);color:#000;}
+.aj-visa-toggle.is-on {background:var(--teal);color:var(--c-on-green);}
 
 
 .aj-company-roles {margin-bottom:32px;}
@@ -991,7 +1010,7 @@ const styles = `
 .aj-view-tabs {display:flex;gap:8px;margin:16px 0;}
 .aj-view-tabs button {background:transparent;border:1px solid var(--border);color:var(--tx2);padding:8px 18px;border-radius:99px;font-size:13px;font-weight:700;cursor:pointer;transition:all 0.2s;}
 .aj-view-tabs button:hover {border-color:var(--teal);color:var(--tx);}
-.aj-view-tabs button.active {background:var(--teal);color:#000;border-color:var(--teal);}
+.aj-view-tabs button.active {background:var(--teal);color:var(--c-on-green);border-color:var(--teal);}
 
 /* Empty States */
 .aj-detail-empty {padding:40px;display:flex;flex-direction:column;gap:24px;height:100%;justify-content:center;}
@@ -1096,5 +1115,6 @@ const styles = `
 .aj-btn-primary, .aj-apply { background: var(--c-green); color: var(--c-on-green); }
 .aj-btn-primary:hover:not(:disabled), .aj-apply:hover { background: var(--c-green-2); box-shadow: none; }
 .aj-visa-toggle.is-on, .aj-view-tabs button.active { color: var(--c-on-green); }
+.aj-kinds { margin-bottom: 14px; flex-wrap: wrap; }
 .aj-detail-title { font-family: var(--font-display); font-weight: 400; font-size: 30px; letter-spacing: -0.01em; }
 `;

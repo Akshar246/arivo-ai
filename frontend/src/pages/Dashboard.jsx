@@ -3,6 +3,7 @@ import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import { useCareerProfile } from "../hooks/useCareerProfile";
 import { useApplications } from "../hooks/useApplications";
+import { defaultKind, matchesKind, searchBody } from "../constants/profileOptions";
 
 const AI_URL = import.meta.env.VITE_AI_URL || "http://localhost:8000";
 
@@ -26,6 +27,7 @@ export default function Dashboard({ onNavigate, onJobsLoad }) {
   const { apps } = useApplications();
   const name = currentUser?.name?.split(" ")[0] || "there";
   const role = profile?.targetRole || "";
+  const kind = defaultKind(profile?.lookingFor);
 
   const [jobs, setJobs] = useState([]);
   const [jobsLoading, setJobsLoading] = useState(false);
@@ -36,7 +38,7 @@ export default function Dashboard({ onNavigate, onJobsLoad }) {
     setJobsLoading(true);
     setJobsError("");
     try {
-      const res = await axios.post(`${AI_URL}/jobs/search`, { query: role, location: "london" });
+      const res = await axios.post(`${AI_URL}/jobs/search`, searchBody(role, kind));
       const list = res.data.jobs || [];
       setJobs(list);
       if (onJobsLoad) onJobsLoad(list);
@@ -44,7 +46,7 @@ export default function Dashboard({ onNavigate, onJobsLoad }) {
       setJobsError("Could not load jobs. Check your connection and try again.");
     }
     setJobsLoading(false);
-  }, [role, onJobsLoad]);
+  }, [role, kind, onJobsLoad]);
 
   useEffect(() => {
     const t = setTimeout(fetchJobs, 0);
@@ -94,7 +96,14 @@ export default function Dashboard({ onNavigate, onJobsLoad }) {
       }
     : steps.find((s) => !s.done);
 
-  const sponsored = [...jobs].sort((a, b) => (b.visa_sponsor ? 1 : 0) - (a.visa_sponsor ? 1 : 0)).slice(0, 6);
+  // Roles that mention the type the student is after come first, then sponsor-register employers
+  const sponsored = [...jobs]
+    .sort(
+      (a, b) =>
+        (matchesKind(b, kind) ? 1 : 0) - (matchesKind(a, kind) ? 1 : 0) ||
+        (b.visa_sponsor ? 1 : 0) - (a.visa_sponsor ? 1 : 0),
+    )
+    .slice(0, 6);
   const counts = ["saved", "applied", "interview", "offer"].map((st) => [st, apps.filter((a) => a.status === st).length]);
   const visaMonths = profile?.visaEndDate ? monthsUntil(profile.visaEndDate) : null;
 

@@ -56,6 +56,16 @@ const userSchema = new mongoose.Schema(
 
     onboardedAt: { type: Date, default: null },
 
+    // Email verification and password reset. Only the SHA-256 of each token is
+    // stored, so a leaked database cannot be used to reset anyone's password.
+    emailVerifiedAt: { type: Date, default: null },
+    verifyTokenHash: { type: String, select: false },
+    verifyExpiresAt: { type: Date, select: false },
+    resetTokenHash: { type: String, select: false },
+    resetExpiresAt: { type: Date, select: false },
+    // Sessions issued before this moment are rejected (set on password reset)
+    passwordChangedAt: { type: Date, default: null },
+
     // Shared career data read and written by Profile, ATS and Jobs
     careerProfile: {
       skills: [

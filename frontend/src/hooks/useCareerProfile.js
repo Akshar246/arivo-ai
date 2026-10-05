@@ -14,6 +14,7 @@ const cacheContext = (p) => {
         targetRole: p.targetRole || "",
         skills: (p.skills || []).map((s) => s.name),
         visaType: p.visaType || "",
+        lookingFor: p.lookingFor || [],
       }),
     );
   } catch {

@@ -209,11 +209,12 @@ function Field({
 }) {
   return (
     <div className="input-group">
-      <label className="input-label">{label}</label>
+      <label className="input-label" htmlFor={`auth-${name}`}>{label}</label>
       <div className={`input-wrapper ${valid ? "is-valid" : ""}`}>
         <span className="input-icon">{icon()}</span>
         {asSelect ? (
           <select
+            id={`auth-${name}`}
             className="input-element"
             name={name}
             value={value}
@@ -231,6 +232,7 @@ function Field({
           </select>
         ) : (
           <input
+            id={`auth-${name}`}
             className="input-element"
             name={name}
             type={type}
@@ -302,6 +304,30 @@ export default function Login({ onLogin }) {
 
   const switchMode = (register) => {
     setIsRegister(register);
+    setError("");
+  };
+
+  const [forgot, setForgot] = useState(false);
+  const [sentTo, setSentTo] = useState("");
+
+  const sendReset = async (e) => {
+    if (e) e.preventDefault();
+    if (loading) return;
+    if (!emailRe.test(form.email)) return setError("Enter the email you signed up with.");
+    setLoading(true);
+    setError("");
+    try {
+      await axios.post(`${API}/forgot-password`, { email: form.email });
+      setSentTo(form.email);
+    } catch (err) {
+      setError(err.response?.data?.message || "Could not reach the server. Please try again.");
+    }
+    setLoading(false);
+  };
+
+  const leaveForgot = () => {
+    setForgot(false);
+    setSentTo("");
     setError("");
   };
 
@@ -405,14 +431,61 @@ export default function Login({ onLogin }) {
           <div className="mobile-brand">Arivo AI</div>
 
           <div className="form-header">
-            <h2>{isRegister ? "Create your account" : "Welcome back"}</h2>
+            <h2>{forgot ? "Reset your password" : isRegister ? "Create your account" : "Welcome back"}</h2>
             <p>
-              {isRegister
-                ? "Free to use. It takes about a minute."
-                : "Sign in to pick up where you left off."}
+              {forgot
+                ? "We'll email you a link to choose a new one."
+                : isRegister
+                  ? "Free to use. It takes about a minute."
+                  : "Sign in to pick up where you left off."}
             </p>
           </div>
 
+          {forgot && (
+            <>
+              {error && (
+                <div className="error-banner animate-pop">
+                  <span className="error-icon">{Ic.alert()}</span>
+                  {error}
+                </div>
+              )}
+              {sentTo ? (
+                <div className="forgot-sent">
+                  <p>
+                    If an account exists for <strong>{sentTo}</strong>, a reset link is on its way. It works for 1
+                    hour. Check your spam folder if you don't see it.
+                  </p>
+                  <button type="button" className="btn-submit" onClick={leaveForgot}>
+                    Back to sign in
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={sendReset} noValidate className="auth-form">
+                  <div className="fields-stack">
+                    <Field
+                      icon={Ic.mail}
+                      label="Email Address"
+                      name="email"
+                      type="email"
+                      value={form.email}
+                      onChange={handleChange}
+                      valid={emailValid}
+                      placeholder="jane@example.com"
+                      extra={{ inputMode: "email", autoCapitalize: "none", spellCheck: false }}
+                    />
+                  </div>
+                  <button type="submit" className="btn-submit" disabled={loading}>
+                    {loading ? "Sending..." : "Send reset link"}
+                  </button>
+                  <button type="button" className="forgot-link forgot-back" onClick={leaveForgot}>
+                    Back to sign in
+                  </button>
+                </form>
+              )}
+            </>
+          )}
+
+          {!forgot && (<>
           <div className="tab-switcher">
             <div
               className={`tab-slider ${isRegister ? "right" : "left"}`}
@@ -513,14 +586,28 @@ export default function Login({ onLogin }) {
                 )}
               </div>
 
-              <label className="remember-row">
-                <input
-                  type="checkbox"
-                  checked={remember}
-                  onChange={(e) => setRemember(e.target.checked)}
-                />
-                <span>Keep me signed in on this device</span>
-              </label>
+              <div className="remember-line">
+                <label className="remember-row">
+                  <input
+                    type="checkbox"
+                    checked={remember}
+                    onChange={(e) => setRemember(e.target.checked)}
+                  />
+                  <span>Keep me signed in on this device</span>
+                </label>
+                {!isRegister && (
+                  <button
+                    type="button"
+                    className="forgot-link"
+                    onClick={() => {
+                      setForgot(true);
+                      setError("");
+                    }}
+                  >
+                    Forgot password?
+                  </button>
+                )}
+              </div>
 
               {isRegister && (
                 <p className="privacy-note animate-fade">
@@ -543,6 +630,7 @@ export default function Login({ onLogin }) {
               )}
             </button>
           </form>
+          </>)}
         </div>
       </main>
     </div>
@@ -627,4 +715,8 @@ const styles = `
 @media (max-width: 960px) { .auth-layout { grid-template-columns: 1fr; } .brand-panel { display: none; } .mobile-brand { display: block; } .form-panel { align-items: flex-start; padding: 2rem 1.25rem; } }
 .form-panel { position: relative; }
 .auth-theme { position: absolute; top: 20px; right: 20px; }
+.remember-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.forgot-link { background: none; border: none; padding: 0; color: var(--c-green); font: 600 0.87rem var(--font-body); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+.forgot-back { display: block; margin: 16px auto 0; color: var(--c-ink-2); font-weight: 500; }
+.forgot-sent p { color: var(--c-ink-2); font-size: 0.95rem; line-height: 1.6; margin: 0 0 22px; }
 `;

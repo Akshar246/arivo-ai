@@ -1,4 +1,5 @@
 const jwt = require("jsonwebtoken");
+const User = require("../models/User");
 
 // ─────────────────────────────────────────────
 // AUTH MIDDLEWARE — protects private routes
@@ -32,6 +33,13 @@ const protect = async (req, res, next) => {
 
     // Attach the user id to the request object
     // This makes req.user available in every protected controller
+    // A password reset signs out every session issued before it.
+    // Missing accounts fall through; the controllers answer those themselves.
+    const account = await User.findById(decoded.id).select("passwordChangedAt");
+    if (account?.passwordChangedAt && decoded.iat < Math.floor(account.passwordChangedAt.getTime() / 1000)) {
+      return res.status(401).json({ message: "Your password was changed. Please log in again." });
+    }
+
     req.user = { id: decoded.id };
 
     // Call next() to pass control to the actual controller

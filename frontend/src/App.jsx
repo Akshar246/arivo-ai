@@ -1,4 +1,5 @@
 import { useState } from "react";
+import axios from "axios";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -10,6 +11,8 @@ import Chat from "./components/Chat";
 import Landing from "./pages/Landing";
 import ATS from "./pages/ATS";
 import JobDetail from "./pages/JobDetail";
+import EmailLink from "./pages/EmailLink";
+import { readEmailLink } from "./constants/emailLink";
 import "./App.css";
 
 /// ─────────────────────────────────────────────
@@ -263,10 +266,53 @@ const navStyles = `
 `;
 
 // ─────────────────────────────────────────────
+// EMAIL CONFIRMATION REMINDER
+// Shown only to accounts whose email is not confirmed yet. Never blocks anything.
+// ─────────────────────────────────────────────
+function VerifyBanner() {
+  const { currentUser, token, updateUser } = useAuth();
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [hidden, setHidden] = useState(false);
+
+  if (!currentUser || currentUser.emailVerified !== false || hidden) return null;
+
+  const resend = async () => {
+    setBusy(true);
+    try {
+      const r = await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/auth/resend-verification`,
+        {},
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      setNote(r.data.message);
+      if (/already confirmed/i.test(r.data.message)) updateUser({ emailVerified: true });
+    } catch (err) {
+      setNote(err.response?.data?.message || "We couldn't send the email. Please try again shortly.");
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div className="vb" role="status">
+      <style>{`
+        .vb { display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; padding: 9px 16px; background: var(--c-warn-soft); border-bottom: 1px solid var(--c-warn-line); color: var(--c-warn); font-size: 0.86rem; text-align: center; }
+        .vb button { background: none; border: none; color: inherit; font: 700 0.86rem var(--font-body); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; padding: 0; }
+        .vb button:disabled { opacity: 0.6; cursor: default; }
+      `}</style>
+      <span>{note || `Confirm your email (${currentUser.email}) so you can recover your account if you forget your password.`}</span>
+      {!note && <button onClick={resend} disabled={busy}>{busy ? "Sending…" : "Send the link"}</button>}
+      <button onClick={() => setHidden(true)} aria-label="Dismiss">Dismiss</button>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
 // APP ROUTER
 // ─────────────────────────────────────────────
 function AppRouter() {
   const { currentUser } = useAuth();
+  const [emailLink, setEmailLink] = useState(readEmailLink);
   const [page, setPage] = useState("dashboard");
   const [showLanding, setShowLanding] = useState(true);
   const [selectedJob, setSelectedJob] = useState(null);
@@ -284,6 +330,19 @@ function AppRouter() {
       setPage(nextPage);
     }
   };
+
+  // Opened from a reset or confirmation email
+  if (emailLink) {
+    return (
+      <EmailLink
+        link={emailLink}
+        onDone={() => {
+          setEmailLink(null);
+          setShowLanding(false);
+        }}
+      />
+    );
+  }
 
   // Not logged in — route to Landing or Login
   if (!currentUser) {
@@ -334,6 +393,7 @@ function AppRouter() {
   return (
     <div className="ivory" style={{ minHeight: "100vh" }}>
       <NavBar page={page} setPage={handleNavigate} />
+      <VerifyBanner />
       {renderPage()}
     </div>
   );

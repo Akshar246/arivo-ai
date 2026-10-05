@@ -8,6 +8,10 @@ const {
   register,
   login,
   getMe,
+  forgotPassword,
+  resetPassword,
+  verifyEmail,
+  resendVerification,
   googleAuth,
   googleCallback,
   linkedinAuth,
@@ -33,6 +37,29 @@ const loginLimit = rateLimit({
 router.post("/register", registerLimit, register);
 router.post("/login", loginLimit, login);
 router.get("/me", protect, getMe);
+
+// Each request can trigger an email, so keep these tight
+const forgotLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  message: "Too many reset requests. Please try again in an hour.",
+  key: (req) => `${req.ip}|${String(req.body?.email || "").toLowerCase()}`,
+});
+const resetLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: "Too many attempts. Please wait a few minutes and try again.",
+});
+const resendLimit = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 3,
+  message: "That's enough emails for now. Check your inbox and spam, or try again in an hour.",
+});
+
+router.post("/forgot-password", forgotLimit, forgotPassword);
+router.post("/reset-password", resetLimit, resetPassword);
+router.post("/verify-email", resetLimit, verifyEmail);
+router.post("/resend-verification", protect, resendLimit, resendVerification);
 
 // ─────────────────────────────────────────────
 // GOOGLE OAUTH
