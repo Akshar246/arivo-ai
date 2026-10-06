@@ -26,7 +26,7 @@ export default function JobDetail({ jobData, allJobs, onNavigate, onBack }) {
   const jobKey = job ? job.url || `${job.title}|${job.company}` : null;
 
   useEffect(() => {
-    if (!job || !job.url) return undefined;
+    if (!job || !job.url || job.direct) return undefined;
     let alive = true;
     axios
       .post(
@@ -67,8 +67,9 @@ export default function JobDetail({ jobData, allJobs, onNavigate, onBack }) {
   }
 
   const ready = full.key === jobKey;
-  const loading = !!job.url && !ready;
-  const fullText = ready && full.status === "full" ? full.text : "";
+  const loading = !!job.url && !job.direct && !ready;
+  // Jobs taken from an employer's own board already carry the whole posting
+  const fullText = job.direct ? job.description_full || "" : ready && full.status === "full" ? full.text : "";
   const bodyText = fullText || job.description_full || job.description || "";
   const paras = bodyText.split(/\n+/).map((p) => p.trim()).filter(Boolean);
   const salary = cleanSalary(job.salary);
@@ -108,7 +109,7 @@ export default function JobDetail({ jobData, allJobs, onNavigate, onBack }) {
     ["Salary", salary ? `${salary}${job.salary_is_predicted ? " (estimated)" : ""}` : "Not listed"],
     ["Type", [job.contract_time, job.contract_type].filter(Boolean).map((t) => t.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase())).join(", ") || "Not listed"],
     ["Work mode", job.work_mode ? job.work_mode.replace(/^./, (c) => c.toUpperCase()) : "Not listed"],
-    ["Source", job.source && job.source.includes("reed") ? "Reed" : "Adzuna"],
+    ["Source", job.direct ? "Employer's own job board" : job.source && job.source.includes("reed") ? "Reed" : "Adzuna"],
   ];
 
   return (
@@ -184,7 +185,10 @@ export default function JobDetail({ jobData, allJobs, onNavigate, onBack }) {
             <a href={job.url} target="_blank" rel="noreferrer">Open the full posting</a> for the complete requirements.
           </p>
         )}
-        {fullText && full.via === "reed_match" && (
+        {fullText && job.direct && (
+          <p className="jd-muted">Full text from {job.company}'s own job board.</p>
+        )}
+        {fullText && !job.direct && full.via === "reed_match" && (
           <p className="jd-muted">Full text taken from the matching Reed listing.</p>
         )}
         <div className="jd-desc">

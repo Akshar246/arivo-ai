@@ -96,11 +96,12 @@ export default function Dashboard({ onNavigate, onJobsLoad }) {
       }
     : steps.find((s) => !s.done);
 
-  // Roles that mention the type the student is after come first, then sponsor-register employers
+  // Roles that mention the type the student is after come first, senior roles go last, then sponsor-register employers
   const sponsored = [...jobs]
     .sort(
       (a, b) =>
         (matchesKind(b, kind) ? 1 : 0) - (matchesKind(a, kind) ? 1 : 0) ||
+        (a.seniority === "senior" ? 1 : 0) - (b.seniority === "senior" ? 1 : 0) ||
         (b.visa_sponsor ? 1 : 0) - (a.visa_sponsor ? 1 : 0),
     )
     .slice(0, 6);

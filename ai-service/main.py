@@ -12,10 +12,13 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.documents import Document
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 import uvicorn
 import joblib
+import sponsor_boards
+import threading
 import tempfile
 import os
 import json
@@ -31,6 +34,9 @@ load_dotenv()
 
 # Create the FastAPI application
 app = FastAPI(title="Arivo AI Service", version="1.0.0")
+
+# Job searches return many full descriptions, so compress responses
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # ─────────────────────────────────────────────
 # CORS MIDDLEWARE
@@ -128,6 +134,11 @@ def load_sponsors_quick():
         reader = csv.DictReader(io.StringIO(content))
 
         for row in reader:
+            # Only the Skilled Worker route lets an employer hire a graduate into a
+            # job. The register also lists religious, sports, creative and charity
+            # worker licences, which would wrongly show as "can sponsor".
+            if row.get("Route", "").strip() != "Skilled Worker":
+                continue
             org_name = row.get("Organisation Name", "").strip().lower()
             if org_name:
                 sponsors.add(org_name)
@@ -230,7 +241,7 @@ def rescue_sponsor_via_reed(title, company, location="london"):
 
 def fetch_live_jobs(
     query,
-    max_results=10,
+    max_results=25,
     location="london",
     full_time=None,
     part_time=None,
@@ -350,7 +361,7 @@ def fetch_live_jobs(
         return []
 
 
-def fetch_reed_jobs(query, max_results=6, location="london"):
+def fetch_reed_jobs(query, max_results=25, location="london"):
     # ─────────────────────────────────────────────
     # SECOND LIVE SOURCE FOR SEARCH RESULTS — not just sponsor
     # rescue. Adzuna is an aggregator and doesn't carry everything;
@@ -526,15 +537,28 @@ Job role:"""
         part_time=part_time,
         category=category,
     )
-    reed_jobs = fetch_reed_jobs(clean_query, max_results=6, location=location)
+    reed_jobs = fetch_reed_jobs(clean_query, max_results=25, location=location)
 
     live_jobs = adzuna_jobs + reed_jobs
+
+    # Jobs straight from verified sponsor employers come first. They are not stored
+    # in the vector DB: they are refreshed from the employers' own boards instead.
+    board_docs = []
+    if not part_time:  # board feeds carry no reliable part-time flag
+        try:
+            found = sponsor_boards.search(
+                sponsor_boards.ensure_fresh(load_sponsors_quick), clean_query, location, limit=60
+            )
+            board_docs = [Document(page_content=f"{j['company']} | {j['title']}", metadata=j) for j in found]
+        except Exception as e:
+            print(f"Sponsor boards error: {e}")
+    print(f"Sponsor boards: {len(board_docs)} direct jobs")
     print(
         f"Fetched {len(adzuna_jobs)} Adzuna + {len(reed_jobs)} Reed = {len(live_jobs)} live jobs"
     )
 
     # Step 3 — Combine ChromaDB + Live results
-    all_results = chroma_results + live_jobs
+    all_results = board_docs + chroma_results + live_jobs
 
     # Step 4 — Deduplicate by company + title
     seen = {}
@@ -1556,6 +1580,21 @@ def scrape_description(request: ScrapeRequest):
         return {"description": "", "success": False}
 
 
+@app.get("/jobs/sponsor-boards/status")
+def sponsor_boards_status():
+    # How many direct employer jobs are loaded, from how many employers, and which boards
+    # failed or fell off the register at the last refresh
+    return sponsor_boards.status()
+
+
+@app.on_event("startup")
+def warm_sponsor_boards():
+    # Load direct employer jobs in the background so the first search is not slow
+    threading.Thread(
+        target=lambda: sponsor_boards.ensure_fresh(load_sponsors_quick, wait=0), daemon=True
+    ).start()
+
+
 @app.post("/jobs/search")
 def search_jobs(request: dict):
     # ─────────────────────────────────────────────
@@ -1580,7 +1619,7 @@ def search_jobs(request: dict):
     # Run hybrid search with the query and filters
     docs = hybrid_job_search(
         query,
-        k=25,
+        k=80,
         location=location,
         full_time=full_time,
         part_time=part_time,
@@ -1610,6 +1649,9 @@ def search_jobs(request: dict):
                 # "onsite" rather than crashing or showing blank.
                 "work_mode": doc.metadata.get("work_mode", "onsite"),
                 "sponsor_verified_via": doc.metadata.get("sponsor_verified_via"),
+                # True when the job came straight from the employer's own job board
+                "direct": doc.metadata.get("direct", False),
+                "seniority": doc.metadata.get("seniority", ""),
             }
         )
 

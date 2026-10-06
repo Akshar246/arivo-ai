@@ -34,6 +34,7 @@ const jobKey = (j) => j.url || `${j.title}__${j.company}`;
 // How likely we can show the whole posting: Reed has an official details API,
 // Adzuna "details" pages are readable, Adzuna "land" links are bot-blocked.
 const descQuality = (j) => {
+  if (j.direct && j.description_full) return 2; // straight from the employer's own job board
   const u = j.url || "";
   if (u.includes("reed.co.uk")) return 2;
   if (u.includes("/jobs/details/")) return 1;
@@ -259,6 +260,8 @@ function ListCard({ job, active, saved, onSelect, onToggleSave }) {
             {Ic.shield()} Sponsor
           </span>
         )}
+        {job.direct && <span className="aj-badge aj-badge--type">Direct from employer</span>}
+        {job.seniority === "entry" && <span className="aj-badge aj-badge--mode">Early career</span>}
         {salary && salary !== "Salary not specified" && (
           <span className="aj-badge aj-badge--salary">{salary}</span>
         )}
@@ -537,6 +540,9 @@ function Detail({ job, saved, onToggleSave, onClose, onScan, onNavigate, fullDes
 
       <div className="aj-section-h">Role Description</div>
       {descLoading && <div className="aj-desc-note">Loading the full description…</div>}
+      {fullText && fullDesc?.via === "employer" && (
+        <div className="aj-desc-note">Full text from {job.company}'s own job board.</div>
+      )}
       {fullText && fullDesc?.via === "reed_match" && (
         <div className="aj-desc-note">
           Full text taken from the matching Reed listing for this role at {job.company}.
@@ -684,6 +690,8 @@ export default function Jobs({ onNavigate }) {
   };
 
   const fetchFullDescription = async (job) => {
+    // Jobs taken from an employer's own board already carry the whole posting
+    if (job.direct && job.description_full) return { status: "full", text: job.description_full, via: "employer" };
     try {
       const res = await axios.post(
         `${import.meta.env.VITE_AI_URL}/jobs/scrape-description`,
@@ -729,6 +737,7 @@ export default function Jobs({ onNavigate }) {
       ? [...filtered].sort(
           (a, b) =>
             (b.visa_sponsor ? 1 : 0) - (a.visa_sponsor ? 1 : 0) ||
+            (a.seniority === "senior" ? 1 : 0) - (b.seniority === "senior" ? 1 : 0) ||
             descQuality(b) - descQuality(a),
         )
       : filtered;
@@ -826,6 +835,14 @@ export default function Jobs({ onNavigate }) {
           ))}
         </div>
 
+        {viewTab === "results" && jobs.some((j) => j.direct) && (
+          <p className="aj-direct-note">
+            {jobs.filter((j) => j.direct).length} of these roles come straight from{" "}
+            {new Set(jobs.filter((j) => j.direct).map((j) => j.company)).size} employers on the sponsor register, so
+            they are current and carry the full description. The rest come from Reed and Adzuna.
+          </p>
+        )}
+
         <div className="aj-controls-row">
           <div className="aj-tabs">
             <button
@@ -908,7 +925,12 @@ export default function Jobs({ onNavigate }) {
               onNavigate={onNavigate}
               fullDesc={
                 active
-                  ? fullDescs[jobKey(active)] || (active.url ? { status: "loading" } : null)
+                  ? fullDescs[jobKey(active)] ||
+                    (active.direct && active.description_full
+                      ? { status: "full", text: active.description_full, via: "employer" }
+                      : active.url
+                        ? { status: "loading" }
+                        : null)
                   : null
               }
             />
@@ -1116,5 +1138,6 @@ const styles = `
 .aj-btn-primary:hover:not(:disabled), .aj-apply:hover { background: var(--c-green-2); box-shadow: none; }
 .aj-visa-toggle.is-on, .aj-view-tabs button.active { color: var(--c-on-green); }
 .aj-kinds { margin-bottom: 14px; flex-wrap: wrap; }
+.aj-direct-note { font-size: 12.5px; color: var(--tx2); line-height: 1.55; margin: 0 0 14px; max-width: 70ch; }
 .aj-detail-title { font-family: var(--font-display); font-weight: 400; font-size: 30px; letter-spacing: -0.01em; }
 `;
