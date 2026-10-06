@@ -2180,6 +2180,88 @@ Return ONLY a JSON object:
         return {"error": "Could not build the pack. Try again."}
 
 
+class CvQuestionsRequest(BaseModel):
+    cv_text: str
+    job_title: str = ""
+    company: str = ""
+    description: str = ""
+    count: int = 4
+
+
+def _norm(text):
+    # Lower-case and collapse whitespace/punctuation so a quote still matches
+    # after the CV's line breaks and bullet characters are stripped
+    return re.sub(r"[^a-z0-9£%+#.]+", " ", str(text).lower()).strip()
+
+
+def _ground_cv_questions(items, cv, count):
+    # Keep a question only if the quote it cites really appears in the CV
+    cv_norm = _norm(cv)
+    questions = []
+    for i in items if isinstance(items, list) else []:
+        if not isinstance(i, dict):
+            continue
+        q = str(i.get("question", "")).strip()
+        basis = str(i.get("cv_basis", "")).strip()
+        if not q or len(_norm(basis).split()) < 3 or _norm(basis) not in cv_norm:
+            continue
+        questions.append(
+            {
+                "question": q,
+                "type": "cv",
+                "cv_basis": basis[:200],
+                "why": str(i.get("why", "")).strip(),
+                "tip": str(i.get("tip", "")).strip(),
+            }
+        )
+    return questions[:count]
+
+
+@app.post("/interview/cv-questions")
+def interview_cv_questions(request: CvQuestionsRequest):
+    # Questions an interviewer could ask from what the CV itself says. Every
+    # question must carry a quote copied from the CV; any whose quote is not in
+    # the CV is dropped, so nothing is built on claims the candidate never made.
+    cv = (request.cv_text or "").strip()
+    if len(cv) < 150:
+        return {"error": "Your CV text is too short to draft questions from."}
+    count = max(2, min(request.count, 6))
+    cv_for_prompt = cv[:6000]
+    role = request.job_title.strip()
+    role_part = f' for the role "{role}"' if role else ""
+    desc = (request.description or "").strip()[:1500]
+    desc_block = f"\nJob description excerpt:\n{desc}\n" if desc else ""
+    prompt = f"""You are an experienced UK interviewer reading a candidate's CV{role_part}.
+{desc_block}
+CV:
+{cv_for_prompt}
+
+Write exactly {count} interview questions that probe what THIS CV says. Choose the
+parts an interviewer would most want to test: a project or achievement they would ask
+the candidate to explain in depth, a number or result they would ask them to justify,
+a skill listed with little evidence, or a gap or change in the timeline.
+
+Rules:
+- Each question must be about something actually written in the CV.
+- "cv_basis" must be an EXACT quote copied from the CV above, between 4 and 25 words.
+- Never ask about age, nationality, ethnicity, religion, family, health, marital status,
+  or plans to have children. Only ask about work, study, projects and skills.
+- Do not assume anything the CV does not state.
+
+Return ONLY a JSON array. Each item:
+{{"question": "...", "cv_basis": "exact quote from the CV",
+  "why": "one sentence on what the interviewer is checking",
+  "tip": "one sentence on how to structure a strong answer"}}"""
+    try:
+        items = _llm_json(prompt)
+    except Exception as e:
+        print(f"CV questions error: {e}")
+        return {"error": "Could not draft questions from your CV. Try again."}
+
+    questions = _ground_cv_questions(items, cv, count)
+    return {"questions": questions, "dropped": max(0, len(items) - len(questions)) if isinstance(items, list) else 0}
+
+
 # ─────────────────────────────────────────────
 # Always keep this at the very bottom
 # This only runs when you execute main.py directly

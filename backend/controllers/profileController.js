@@ -1,6 +1,9 @@
 const User = require("../models/User");
 const Application = require("../models/Application");
 const bcrypt = require("bcryptjs");
+const axios = require("axios");
+
+const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:8000";
 
 const gone = (res) => res.status(401).json({ message: "Account not found. Log in again." });
 
@@ -188,4 +191,32 @@ const deleteAccount = async (req, res) => {
   }
 };
 
-module.exports = { deleteAccount, getProfile, updateProfile, setSkills, saveGap, setPlanItem, saveAts };
+// Interview questions drawn from the student's own CV. The stored CV text goes
+// from the database to the AI service and is never sent to the browser.
+const cvQuestions = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) return gone(res);
+    const cvText = user.careerProfile?.cvText || "";
+    if (!cvText) return res.status(400).json({ message: "Upload your CV first, then we can draft questions from it." });
+
+    const { data } = await axios.post(
+      `${AI_SERVICE_URL}/interview/cv-questions`,
+      {
+        cv_text: cvText,
+        job_title: clean(req.body?.jobTitle, 120),
+        company: clean(req.body?.company, 120),
+        description: String(req.body?.description || "").slice(0, 2000),
+        count: 4,
+      },
+      { timeout: 60000 },
+    );
+    if (data.error) return res.status(502).json({ message: data.error });
+    res.json({ questions: data.questions || [] });
+  } catch (err) {
+    console.error("CV questions error:", err.message);
+    res.status(502).json({ message: "Could not draft questions from your CV right now. Try again." });
+  }
+};
+
+module.exports = { cvQuestions, deleteAccount, getProfile, updateProfile, setSkills, saveGap, setPlanItem, saveAts };
