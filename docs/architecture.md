@@ -208,17 +208,21 @@ GET /jobs/search → Semantic job search
 ## Security
 
 - All passwords hashed with bcrypt
-- JWT tokens expire after 7 days
+- JWT sessions last 7 days, or 30 days when the student chooses "keep me signed in"
 - API keys stored in .env never committed to GitHub
 - MongoDB connection string in .env
 - CORS configured for production domain only
-- Rate limiting on all endpoints
+- Rate limiting on sign up, login, password reset, email confirmation and the CV question endpoint
 
 ## Deployment Architecture
 
 Frontend → Vercel (free)
-Backend → AWS EC2 t2.micro (free tier)
-AI Service → AWS EC2 t2.micro (free tier)
+Backend → Render (free tier, sleeps after 15 idle minutes)
+AI Service → Hugging Face Spaces, Docker (free)
 Database → MongoDB Atlas M0 (free)
-ChromaDB → Stored on EC2 instance
-CI/CD → GitHub Actions (free)
+ChromaDB → Stored on the AI service's disk (rebuilt on a cold start)
+Email → Google Apps Script relay sending from Gmail (see docs/mail-relay.md), Resend as an optional fallback
+CI → GitHub Actions runs the AI service tests on every push
+
+Vercel and Render deploy automatically when `main` is pushed. The Hugging Face Space is a
+separate git repository and is updated by pushing the AI service files to it.

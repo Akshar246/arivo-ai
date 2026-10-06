@@ -1866,6 +1866,7 @@ const CSS = `
 .prof-app-actions, .prof-role-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .prof-role-actions { margin-top: 10px; }
 .prof-role-actions .prof-role-link { margin-top: 0; }
+.prof-app-actions .prof-role-link { margin-top: 0; padding: 4px 8px; }
 .prof-role-saved { font-size: 12px; font-weight: 600; color: var(--tl); }
 
 /* DROPZONE */
