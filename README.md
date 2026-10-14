@@ -29,6 +29,7 @@
 |---|---|
 | **Jobs from verified sponsors** | Up to 80 results per search. Roles taken straight from the career pages of employers whose licence is checked against the live register come first. Reed and Adzuna fill in the rest. |
 | **A dashboard that says what to do next** | One next step, worked out from the student's real profile: upload a CV, run the skill comparison, check the CV against a job, save a role, or prepare for an interview that is booked. Months left on their visa and tracker counts sit beside it. |
+| **A visa salary check on every job** | Compares the published salary with the Skilled Worker figures for the student's own visa type: clears £41,700, may qualify on the graduate route (70% of the going rate, from £33,400), range crosses the minimum, or below. It says what it cannot confirm and links its gov.uk source. When no salary is published it offers a ready message to ask the employer. |
 | **Full job pages** | Full descriptions, which of the student's own skills the posting names, salary when published, and honest labels such as "Early career" and "Direct from employer". |
 | **Interview practice** | A pack for each tracked job (key requirements, practice questions, questions to ask), voice answers with pace and filler word stats, and feedback that reads the answer the way a UK interviewer would. |
 | **Questions drawn from the student's own CV** | Each one quotes the line of the CV it came from. See the engineering notes below for why that matters. |
@@ -123,7 +124,7 @@ More detail is in [`docs/architecture.md`](docs/architecture.md).
 
 ## Quality
 
-- **23 automated tests** on the AI service run in CI on every push: sponsor matching, the quote check behind the CV questions, employer board parsing for all four providers, register verification, UK location detection, ranking and salary cleanup.
+- **35 automated tests** on the AI service run in CI on every push: sponsor matching, the quote check behind the CV questions, employer board parsing for all four providers, register verification, UK location detection, ranking, salary cleanup and the visa salary rules.
 - The frontend lints and builds cleanly on every change I make. 13 older lint errors remain in three files I have not got to yet.
 - Honest gap: there are no automated tests yet for the Node backend or the React screens. They are covered by manual checks in a real browser, and automated coverage is on the list.
 
@@ -136,10 +137,11 @@ More detail is in [`docs/architecture.md`](docs/architecture.md).
 - [x] Application tracker, interview packs, voice practice, UK style feedback, questions from the CV
 - [x] Jobs from verified sponsor employers, early career ranking, full descriptions
 - [x] One design system with light and dark themes
+- [x] A first visa salary check on every job (salary against the published Skilled Worker figures, with the rule date and source shown)
 
 **Next, in this order**
 
-1. **Can this role sponsor me?** Compare a role's salary and type with the Skilled Worker rules and say "likely meets", "below the threshold" or "unclear", with the rule and its gov.uk source. Only about 6% of direct postings publish a salary, so "unclear" will be common and will be labelled as such.
+1. **Sharper sponsorship check.** The first version compares salary with the fixed figures. The real test also uses the going rate for the job's occupation code, which can be higher. Mapping a job title to its government occupation code reliably is the next hard problem. Only about 6% of direct postings publish a salary, so "salary not published" is common and labelled as such.
 2. **Sponsorship Scout.** A daily background agent that finds new roles from verified employers that fit the student, reads each posting for explicit "no sponsorship" wording and quotes it, checks the salary, and sends a short digest. Every pick shows its evidence.
 3. **Visa runway and cost planner.** Months left turned into milestones, with a plain calculator for visa fees built from published figures.
 4. **Application helper**, then a **live mock interviewer** that asks follow-up questions.
@@ -184,6 +186,7 @@ Tests: `cd ai-service && pip install pytest -r requirements.docker.txt && pytest
 | If you want to see | Open |
 |---|---|
 | Employer board connectors, register check, ranking | [`ai-service/sponsor_boards.py`](ai-service/sponsor_boards.py) and its tests |
+| The visa salary rules and their tests | [`ai-service/visa_rules.py`](ai-service/visa_rules.py) |
 | The grounded CV question endpoint | `ai-service/main.py` (`/interview/cv-questions`) |
 | Auth, reset, confirmation, rate limits | [`backend/controllers/authController.js`](backend/controllers/authController.js), [`backend/utils/mailer.js`](backend/utils/mailer.js) |
 | The design system and dark theme | [`frontend/src/styles/ivory.css`](frontend/src/styles/ivory.css) |

@@ -3,6 +3,7 @@ import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import { useCareerProfile } from "../hooks/useCareerProfile";
 import { trackJob } from "../hooks/useApplications";
+import SalaryCheck from "../components/SalaryCheck";
 
 const AI_URL = import.meta.env.VITE_AI_URL;
 
@@ -143,6 +144,8 @@ export default function JobDetail({ jobData, allJobs, onNavigate, onBack }) {
           <button className="iv-btn iv-btn--ghost" onClick={scan}>Check my CV against this role</button>
         </div>
       </header>
+
+      <SalaryCheck check={job.salary_check} variant="card" job={job} />
 
       <dl className="jd-facts iv-card">
         {facts.map(([k, v]) => (

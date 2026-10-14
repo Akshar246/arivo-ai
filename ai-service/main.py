@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 import uvicorn
 import joblib
 import sponsor_boards
+import visa_rules
 import threading
 import tempfile
 import os
@@ -1669,9 +1670,22 @@ def search_jobs(request: dict):
     if work_mode in ("remote", "hybrid", "onsite"):
         unique_jobs = [j for j in unique_jobs if j.get("work_mode") == work_mode]
 
+    # Compare each job's published salary with the Skilled Worker figures, for this student's
+    # visa type. Information only: see visa_rules.py for what it can and cannot confirm.
+    visa_type = request.get("visa_type") or ""
+    for job in unique_jobs:
+        job["salary_check"] = visa_rules.assess(
+            job.get("salary", ""), visa_type, job.get("salary_is_predicted", False)
+        )
+
     print(f"Job search for '{query}' returned {len(unique_jobs)} unique results")
 
-    return {"jobs": unique_jobs, "count": len(unique_jobs), "query": query}
+    return {
+        "jobs": unique_jobs,
+        "count": len(unique_jobs),
+        "query": query,
+        "visa_rules": visa_rules.rules_summary(),
+    }
 
 
 class RecheckRequest(BaseModel):

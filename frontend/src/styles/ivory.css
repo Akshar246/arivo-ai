@@ -334,3 +334,20 @@ body {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* Visa salary check (components/SalaryCheck.jsx) */
+.sc-badge { display: inline-flex; align-items: center; font-size: 0.72rem; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: var(--c-line); color: var(--c-ink-2); white-space: nowrap; }
+.sc-badge--ok { background: var(--c-ok-soft); color: var(--c-ok); }
+.sc-badge--warn { background: var(--c-warn-soft); color: var(--c-warn); }
+.sc-badge--bad { background: var(--c-danger-soft); color: var(--c-danger); }
+.sc-card { border: 1px solid var(--c-line); border-radius: var(--radius); padding: 16px 18px; margin: 14px 0; background: var(--c-surface); }
+.sc-card--ok { border-color: var(--c-ok); }
+.sc-card--warn { border-color: var(--c-warn-line); background: var(--c-warn-soft); }
+.sc-card--bad { border-color: var(--c-danger-line); background: var(--c-danger-soft); }
+.sc-eyebrow { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-ink-3); margin-bottom: 4px; }
+.sc-label { font-size: 1rem; font-weight: 700; color: var(--c-ink); margin-bottom: 6px; }
+.sc-detail { font-size: 0.88rem; line-height: 1.6; color: var(--c-ink-2); margin: 0 0 8px; }
+.sc-ask { background: none; border: 1px solid var(--c-line-strong, var(--c-line)); border-radius: var(--radius); color: var(--c-ink); font: 600 0.8rem var(--font-body); padding: 7px 12px; cursor: pointer; margin: 2px 0 10px; }
+.sc-ask:hover { border-color: var(--c-green); color: var(--c-green); }
+.sc-foot { font-size: 0.76rem; line-height: 1.55; color: var(--c-ink-3); margin: 0; }
+.sc-foot a { color: inherit; font-weight: 600; }

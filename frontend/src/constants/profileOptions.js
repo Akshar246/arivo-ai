@@ -25,8 +25,9 @@ export const matchesKind = (job, kind) => {
   return re.test(`${job.title || ""} ${job.description_full || job.description || ""}`);
 };
 
-export const searchBody = (role, kind, location = "london") => ({
+export const searchBody = (role, kind, location = "london", visaType = "") => ({
   query: role,
   location,
+  ...(visaType ? { visa_type: visaType } : {}),
   ...(kind === "Part-time" ? { part_time: true } : {}),
 });

@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { useCareerProfile } from "../hooks/useCareerProfile";
 import { useApplications } from "../hooks/useApplications";
 import { defaultKind, matchesKind, searchBody } from "../constants/profileOptions";
+import SalaryCheck from "../components/SalaryCheck";
 
 const AI_URL = import.meta.env.VITE_AI_URL || "http://localhost:8000";
 
@@ -28,6 +29,7 @@ export default function Dashboard({ onNavigate, onJobsLoad }) {
   const name = currentUser?.name?.split(" ")[0] || "there";
   const role = profile?.targetRole || "";
   const kind = defaultKind(profile?.lookingFor);
+  const visaType = profile?.visaType || "";
 
   const [jobs, setJobs] = useState([]);
   const [jobsLoading, setJobsLoading] = useState(false);
@@ -38,7 +40,7 @@ export default function Dashboard({ onNavigate, onJobsLoad }) {
     setJobsLoading(true);
     setJobsError("");
     try {
-      const res = await axios.post(`${AI_URL}/jobs/search`, searchBody(role, kind));
+      const res = await axios.post(`${AI_URL}/jobs/search`, searchBody(role, kind, "london", visaType));
       const list = res.data.jobs || [];
       setJobs(list);
       if (onJobsLoad) onJobsLoad(list);
@@ -46,7 +48,7 @@ export default function Dashboard({ onNavigate, onJobsLoad }) {
       setJobsError("Could not load jobs. Check your connection and try again.");
     }
     setJobsLoading(false);
-  }, [role, kind, onJobsLoad]);
+  }, [role, kind, visaType, onJobsLoad]);
 
   useEffect(() => {
     const t = setTimeout(fetchJobs, 0);
@@ -204,6 +206,7 @@ export default function Dashboard({ onNavigate, onJobsLoad }) {
                 ) : (
                   <span className="dash-badge">Sponsorship not confirmed</span>
                 )}
+                <SalaryCheck check={job.salary_check} />
               </button>
             ))}
           </div>

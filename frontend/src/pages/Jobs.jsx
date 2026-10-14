@@ -3,6 +3,7 @@ import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import { trackJob, untrackJob } from "../hooks/useApplications";
 import { LOOKING_FOR, defaultKind, matchesKind, searchBody } from "../constants/profileOptions";
+import SalaryCheck from "../components/SalaryCheck";
 
 // ─────────────────────────────────────────────────────────────
 // JOBS PAGE · Arivo AI (V2 Premium Architecture)
@@ -261,6 +262,7 @@ function ListCard({ job, active, saved, onSelect, onToggleSave }) {
           </span>
         )}
         {job.direct && <span className="aj-badge aj-badge--type">Direct from employer</span>}
+        <SalaryCheck check={job.salary_check} />
         {job.seniority === "entry" && <span className="aj-badge aj-badge--mode">Early career</span>}
         {salary && salary !== "Salary not specified" && (
           <span className="aj-badge aj-badge--salary">{salary}</span>
@@ -483,6 +485,8 @@ function Detail({ job, saved, onToggleSave, onClose, onScan, onNavigate, fullDes
         </div>
       </div>
 
+      <SalaryCheck check={job.salary_check} variant="card" job={job} />
+
       {job.savedAt && (
         <div className="aj-recheck">
           <button
@@ -582,6 +586,8 @@ export default function Jobs({ onNavigate }) {
   });
   const [location, setLocation] = useState("London");
   const [kind, setKind] = useState(() => defaultKind(readLS("arivo_pf_context", {}).lookingFor));
+  const [visaType] = useState(() => readLS("arivo_pf_context", {}).visaType || "");
+  const [salaryOk, setSalaryOk] = useState(false);
   const [category] = useState("");
   // eslint-disable-next-line no-unused-vars
   const [categories, setCategories] = useState([]);
@@ -606,7 +612,7 @@ export default function Jobs({ onNavigate }) {
         const res = await axios.post(
           `${import.meta.env.VITE_AI_URL}/jobs/search`,
           {
-            ...searchBody(query, kind, location),
+            ...searchBody(query, kind, location, visaType),
             category: category || undefined,
           },
         );
@@ -660,7 +666,7 @@ export default function Jobs({ onNavigate }) {
       const res = await axios.post(
         `${import.meta.env.VITE_AI_URL}/jobs/search`,
         {
-          ...searchBody(q, k, loc),
+          ...searchBody(q, k, loc, visaType),
           category: category || undefined,
         },
       );
@@ -729,7 +735,12 @@ export default function Jobs({ onNavigate }) {
   };
   const baseList = viewTab === "saved" ? savedJobs : jobs;
   const byKind = baseList.filter((j) => matchesKind(j, kind));
-  const filtered = visaOnly ? byKind.filter((j) => j.visa_sponsor) : byKind;
+  const sponsorFiltered = visaOnly ? byKind.filter((j) => j.visa_sponsor) : byKind;
+  // Keep roles whose published salary could meet the Skilled Worker minimum
+  const filtered = salaryOk
+    ? sponsorFiltered.filter((j) => ["meets_general", "graduate_route", "depends"].includes(j.salary_check?.status))
+    : sponsorFiltered;
+  const hasSalaryChecks = jobs.some((j) => j.salary_check?.label);
   const kindHidAll = kind && baseList.length > 0 && byKind.length === 0;
 
   const displayed =
@@ -858,12 +869,23 @@ export default function Jobs({ onNavigate }) {
               Sponsors First
             </button>
           </div>
-          <button
-            className={`aj-visa-toggle ${visaOnly ? "is-on" : ""}`}
-            onClick={() => setVisaOnly(!visaOnly)}
-          >
-            {Ic.shield()} Visa Sponsors Only
-          </button>
+          <div className="aj-toggles">
+            <button
+              className={`aj-visa-toggle ${visaOnly ? "is-on" : ""}`}
+              onClick={() => setVisaOnly(!visaOnly)}
+            >
+              {Ic.shield()} Visa Sponsors Only
+            </button>
+            {hasSalaryChecks && (
+              <button
+                className={`aj-visa-toggle ${salaryOk ? "is-on" : ""}`}
+                onClick={() => setSalaryOk(!salaryOk)}
+                title="Only roles whose published salary could meet the Skilled Worker minimum"
+              >
+                Salary can qualify
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Main Split View */}
@@ -1138,6 +1160,7 @@ const styles = `
 .aj-btn-primary:hover:not(:disabled), .aj-apply:hover { background: var(--c-green-2); box-shadow: none; }
 .aj-visa-toggle.is-on, .aj-view-tabs button.active { color: var(--c-on-green); }
 .aj-kinds { margin-bottom: 14px; flex-wrap: wrap; }
+.aj-toggles { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .aj-direct-note { font-size: 12.5px; color: var(--tx2); line-height: 1.55; margin: 0 0 14px; max-width: 70ch; }
 .aj-detail-title { font-family: var(--font-display); font-weight: 400; font-size: 30px; letter-spacing: -0.01em; }
 `;
