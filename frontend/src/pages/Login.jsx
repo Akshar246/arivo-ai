@@ -308,6 +308,7 @@ export default function Login({ onLogin }) {
   };
 
   const [forgot, setForgot] = useState(false);
+  const [slow, setSlow] = useState(false);
   const [sentTo, setSentTo] = useState("");
 
   const sendReset = async (e) => {
@@ -317,10 +318,10 @@ export default function Login({ onLogin }) {
     setLoading(true);
     setError("");
     try {
-      await axios.post(`${API}/forgot-password`, { email: form.email });
+      await axios.post(`${API}/forgot-password`, { email: form.email }, { timeout: 70000 });
       setSentTo(form.email);
     } catch (err) {
-      setError(err.response?.data?.message || "Could not reach the server. Please try again.");
+      setError(err.response?.data?.message || "We can't reach the server right now. Please try again in a minute.");
     }
     setLoading(false);
   };
@@ -348,22 +349,30 @@ export default function Login({ onLogin }) {
 
     setLoading(true);
     setError("");
+    setSlow(false);
+    // The free host sleeps when idle and can take about a minute to wake. Say so after a few
+    // seconds instead of leaving a silent spinner.
+    const slowTimer = setTimeout(() => setSlow(true), 8000);
 
     try {
       const endpoint = isRegister ? `${API}/register` : `${API}/login`;
       const payload = isRegister
         ? { name: form.name, email: form.email, password: form.password, remember }
         : { email: form.email, password: form.password, remember };
-      const response = await axios.post(endpoint, payload);
+      const response = await axios.post(endpoint, payload, { timeout: 70000 });
       login(response.data.user, response.data.token, remember);
       onLogin();
     } catch (err) {
       console.warn("Auth Error:", err);
       setError(
         err.response?.data?.message ||
-          "Connection failed. Please verify the AI server is online.",
+          (err.code === "ECONNABORTED"
+            ? "The server is taking a long time to wake up. It's on free hosting, so this can happen. Please try again in a minute."
+            : "We can't reach the server right now. Check your connection, or try again in a minute."),
       );
     }
+    clearTimeout(slowTimer);
+    setSlow(false);
     setLoading(false);
   };
 
@@ -629,6 +638,11 @@ export default function Login({ onLogin }) {
                 "Sign In →"
               )}
             </button>
+            {loading && slow && (
+              <p className="slow-note" role="status">
+                Waking up the server. It's on free hosting, so the first sign-in after a quiet spell can take up to a minute.
+              </p>
+            )}
           </form>
           </>)}
         </div>
@@ -718,5 +732,6 @@ const styles = `
 .remember-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .forgot-link { background: none; border: none; padding: 0; color: var(--c-green); font: 600 0.87rem var(--font-body); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .forgot-back { display: block; margin: 16px auto 0; color: var(--c-ink-2); font-weight: 500; }
+.slow-note { font-size: 0.82rem; line-height: 1.55; color: var(--c-ink-2); margin: 12px 0 0; text-align: center; }
 .forgot-sent p { color: var(--c-ink-2); font-size: 0.95rem; line-height: 1.6; margin: 0 0 22px; }
 `;
