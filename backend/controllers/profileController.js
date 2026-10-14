@@ -1,5 +1,6 @@
 const User = require("../models/User");
 const Application = require("../models/Application");
+const ScoutPick = require("../models/ScoutPick");
 const bcrypt = require("bcryptjs");
 const axios = require("axios");
 
@@ -184,6 +185,7 @@ const deleteAccount = async (req, res) => {
     const ok = await bcrypt.compare(String(req.body?.password || ""), user.password);
     if (!ok) return res.status(400).json({ message: "Incorrect password." });
     await Application.deleteMany({ user: user._id });
+    await ScoutPick.deleteMany({ user: user._id });
     await User.deleteOne({ _id: user._id });
     res.json({ ok: true });
   } catch (err) {

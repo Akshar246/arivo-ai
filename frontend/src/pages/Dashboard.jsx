@@ -5,6 +5,7 @@ import { useCareerProfile } from "../hooks/useCareerProfile";
 import { useApplications } from "../hooks/useApplications";
 import { defaultKind, matchesKind, searchBody } from "../constants/profileOptions";
 import SalaryCheck from "../components/SalaryCheck";
+import ScoutPanel from "../components/ScoutPanel";
 
 const AI_URL = import.meta.env.VITE_AI_URL || "http://localhost:8000";
 
@@ -169,6 +170,8 @@ export default function Dashboard({ onNavigate, onJobsLoad }) {
           </button>
         )}
       </div>
+
+      {role && <ScoutPanel />}
 
       {role && (
         <section className="dash-section">

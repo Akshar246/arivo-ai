@@ -56,6 +56,14 @@ const userSchema = new mongoose.Schema(
 
     onboardedAt: { type: Date, default: null },
 
+    // Sponsorship Scout: opt-in, so nothing is emailed unless the student turns it on
+    scout: {
+      enabled: { type: Boolean, default: false },
+      frequency: { type: String, enum: ["weekly", "daily"], default: "weekly" },
+      lastRunAt: { type: Date, default: null },
+      lastEmailAt: { type: Date, default: null },
+    },
+
     // Email verification and password reset. Only the SHA-256 of each token is
     // stored, so a leaked database cannot be used to reset anyone's password.
     emailVerifiedAt: { type: Date, default: null },

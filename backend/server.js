@@ -93,6 +93,7 @@ app.use("/api/cv", require("./routes/cvRoutes"));
 // Career profile (skills, gap analysis, learning plan, ATS) and application tracker
 app.use("/api/profile", require("./routes/profileRoutes"));
 app.use("/api/applications", require("./routes/applicationRoutes"));
+app.use("/api/scout", require("./routes/scoutRoutes"));
 
 // Health Check Endpoint
 app.get("/", (req, res) => {

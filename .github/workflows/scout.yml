@@ -1,0 +1,32 @@
+name: Sponsorship Scout daily run
+
+# Wakes the backend and starts the daily Scout run. The backend answers straight away and
+# does the work in the background. Needs two repository secrets:
+#   BACKEND_URL  e.g. https://arivo-backend-vp35.onrender.com
+#   CRON_SECRET  the same value as CRON_SECRET on the backend
+on:
+  schedule:
+    - cron: "30 7 * * *"
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Start the Scout run
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$BACKEND_URL" ] || [ -z "$CRON_SECRET" ]; then
+            echo "BACKEND_URL or CRON_SECRET is not set; nothing to do."
+            exit 0
+          fi
+          # The free host can take about a minute to wake, so retry
+          for i in 1 2 3 4; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" -m 120 -X POST "$BACKEND_URL/api/scout/run-all" -H "x-cron-secret: $CRON_SECRET")
+            echo "attempt $i: HTTP $code"
+            [ "$code" = "202" ] && exit 0
+            sleep 30
+          done
+          exit 1

@@ -19,6 +19,7 @@ import uvicorn
 import joblib
 import sponsor_boards
 import visa_rules
+import scout
 import threading
 import tempfile
 import os
@@ -1594,6 +1595,34 @@ def warm_sponsor_boards():
     threading.Thread(
         target=lambda: sponsor_boards.ensure_fresh(load_sponsors_quick, wait=0), daemon=True
     ).start()
+
+
+@app.post("/scout/analyse")
+def scout_analyse(request: dict):
+    # The Sponsorship Scout's brain for one student. The backend sends the student's profile and
+    # the roles it has already shown; this searches, reads each posting for sponsorship wording
+    # and returns a short list with the evidence for every pick. Nothing is stored here.
+    role = str(request.get("role") or "").strip()
+    if not role:
+        return {"picks": [], "skipped_no_sponsorship": 0, "considered": 0, "error": "No target role set"}
+    body = {
+        "query": role,
+        "location": request.get("location") or "london",
+        "visa_type": request.get("visa_type") or "",
+    }
+    if request.get("part_time"):
+        body["part_time"] = True
+    found = search_jobs(body)
+    limit = max(1, min(int(request.get("limit") or 5), 10))
+    picks, skipped = scout.pick(
+        found.get("jobs", []), role, request.get("skills") or [], seen=request.get("seen") or [], limit=limit
+    )
+    return {
+        "picks": picks,
+        "skipped_no_sponsorship": skipped,
+        "considered": len(found.get("jobs", [])),
+        "visa_rules": found.get("visa_rules"),
+    }
 
 
 @app.post("/jobs/search")

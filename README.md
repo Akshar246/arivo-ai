@@ -30,6 +30,7 @@
 | **Jobs from verified sponsors** | Up to 80 results per search. Roles taken straight from the career pages of employers whose licence is checked against the live register come first. Reed and Adzuna fill in the rest. |
 | **A dashboard that says what to do next** | One next step, worked out from the student's real profile: upload a CV, run the skill comparison, check the CV against a job, save a role, or prepare for an interview that is booked. Months left on their visa and tracker counts sit beside it. |
 | **A visa salary check on every job** | Compares the published salary with the Skilled Worker figures for the student's own visa type: clears £41,700, may qualify on the graduate route (70% of the going rate, from £33,400), range crosses the minimum, or below. It says what it cannot confirm and links its gov.uk source. When no salary is published it offers a ready message to ask the employer. |
+| **A Sponsorship Scout** (opt-in) | Checks for new roles from register employers that fit the student's target role and skills, reads each posting for what it says about sponsorship and quotes the exact sentence, skips roles that say they can't sponsor, and emails a short list weekly or daily. Every pick shows its evidence. |
 | **Full job pages** | Full descriptions, which of the student's own skills the posting names, salary when published, and honest labels such as "Early career" and "Direct from employer". |
 | **Interview practice** | A pack for each tracked job (key requirements, practice questions, questions to ask), voice answers with pace and filler word stats, and feedback that reads the answer the way a UK interviewer would. |
 | **Questions drawn from the student's own CV** | Each one quotes the line of the CV it came from. See the engineering notes below for why that matters. |
@@ -86,6 +87,8 @@ These are in the code, not just the README.
 
 **Grounded CV interview questions.** The model must return, with each question, an exact quote from the CV it is based on. The service then checks that the quote really appears in the CV, ignoring line breaks and bullet characters, and drops any question whose quote does not. The prompt also forbids questions about age, nationality, family, health and similar topics. The check is a small pure function with its own tests, including a made-up quote that must be rejected. The CV text itself is read on the server and never sent to the browser.
 
+**Reading postings for what they say about sponsorship.** The Scout finds the sentence in a posting that mentions sponsorship with plain patterns, not a model's guess, so every result is a quote the student can check. "We are unable to offer visa sponsorship" is a no. "Sponsorship is available" is an offer. Anything unclear stays "unclear", because silence is not a no. I tested it against about 1,770 real postings and read every distinct quote it found, which exposed three mislabels I would never have written tests for: "would not require sponsorship" is not an offer, "transfer of existing sponsorship" does not help a new graduate, and "we cannot offer relocation but we can sponsor" is two statements in one sentence. All three are now fixed and tested. At the time of writing, of those postings about 80 said they could not sponsor, about 85 said they could, and the rest said nothing.
+
 **Authentication that holds up.** Passwords are hashed with bcrypt. Password reset and email confirmation use random one-time tokens, of which only the SHA-256 hash is stored, so a leaked database cannot be used to reset anyone's account. The reset form answers identically whether or not an address exists, so it cannot be used to find out who has an account. Each sensitive route has its own rate limit. After a reset, every session issued before it is rejected. Accounts and all their data can be deleted by the student.
 
 **Email at zero cost.** Resend only delivers to arbitrary addresses once a domain is verified, and Render's free plan blocks SMTP. So reset and confirmation emails go out through a small Google Apps Script web app that sends from a Gmail account, guarded by a shared secret. The mailer falls back to Resend when it is configured. Setup is in [`docs/mail-relay.md`](docs/mail-relay.md).
@@ -104,6 +107,7 @@ Three services deployed separately and talking over REST.
 flowchart LR
     F["Frontend<br/>React 19 + Vite<br/>Vercel"] -->|"auth, profile, tracker"| B["Backend<br/>Node + Express<br/>Render"]
     F -->|"jobs, interview, ATS, chat"| A["AI service<br/>FastAPI<br/>Hugging Face Spaces"]
+    S["GitHub Actions<br/>daily timer"] -->|"run-all, secret header"| B
     B --> M[("MongoDB Atlas")]
     B -->|"CV text, server side only"| A
     B -->|"reset and confirmation email"| G["Gmail relay<br/>Apps Script"]
@@ -124,7 +128,7 @@ More detail is in [`docs/architecture.md`](docs/architecture.md).
 
 ## Quality
 
-- **35 automated tests** on the AI service run in CI on every push: sponsor matching, the quote check behind the CV questions, employer board parsing for all four providers, register verification, UK location detection, ranking, salary cleanup and the visa salary rules.
+- **53 automated tests** on the AI service run in CI on every push: sponsor matching, the quote check behind the CV questions, employer board parsing for all four providers, register verification, UK location detection, ranking, salary cleanup, the visa salary rules and the Scout's sponsorship wording reader.
 - The frontend lints and builds cleanly on every change I make. 13 older lint errors remain in three files I have not got to yet.
 - Honest gap: there are no automated tests yet for the Node backend or the React screens. They are covered by manual checks in a real browser, and automated coverage is on the list.
 
@@ -137,16 +141,16 @@ More detail is in [`docs/architecture.md`](docs/architecture.md).
 - [x] Application tracker, interview packs, voice practice, UK style feedback, questions from the CV
 - [x] Jobs from verified sponsor employers, early career ranking, full descriptions
 - [x] One design system with light and dark themes
+- [x] Sponsorship Scout: daily scan, posting-wording evidence, digest email with one-click unsubscribe, dashboard panel
 - [x] A first visa salary check on every job (salary against the published Skilled Worker figures, with the rule date and source shown)
 
 **Next, in this order**
 
 1. **Sharper sponsorship check.** The first version compares salary with the fixed figures. The real test also uses the going rate for the job's occupation code, which can be higher. Mapping a job title to its government occupation code reliably is the next hard problem. Only about 6% of direct postings publish a salary, so "salary not published" is common and labelled as such.
-2. **Sponsorship Scout.** A daily background agent that finds new roles from verified employers that fit the student, reads each posting for explicit "no sponsorship" wording and quotes it, checks the salary, and sends a short digest. Every pick shows its evidence.
-3. **Visa runway and cost planner.** Months left turned into milestones, with a plain calculator for visa fees built from published figures.
-4. **Application helper**, then a **live mock interviewer** that asks follow-up questions.
-5. **Wider coverage.** Banks, consultancies, retailers and the NHS publish through systems the current connectors do not read. Adding them is the biggest gap in the job list.
-6. **Stricter company matching** for Reed and Adzuna listings, which still use name matching that can be too loose for short names.
+2. **Visa runway and cost planner.** Months left turned into milestones, with a plain calculator for visa fees built from published figures.
+3. **Application helper**, then a **live mock interviewer** that asks follow-up questions.
+4. **Wider coverage.** Banks, consultancies, retailers and the NHS publish through systems the current connectors do not read. Adding them is the biggest gap in the job list.
+5. **Stricter company matching** for Reed and Adzuna listings, which still use name matching that can be too loose for short names.
 
 ## Known limitations
 
@@ -154,6 +158,7 @@ More detail is in [`docs/architecture.md`](docs/architecture.md).
 - Being on the register does not mean a particular role is sponsored. The product says so wherever it shows a badge.
 - Generated questions, feedback and summaries come from a language model. They are practice material, not predictions, and are labelled as AI generated.
 - Matching of Reed and Adzuna company names to the register is name based and can miss subsidiaries or occasionally match too broadly.
+- The Scout reads the full posting for direct employer jobs. For Reed and Adzuna it often has only a preview, and says so, because a "no sponsorship" line further down would be missed.
 - The free hosting tiers are slow to wake. The Gmail relay allows roughly 100 emails a day, which is enough for now.
 
 ## Run it locally
@@ -174,6 +179,7 @@ Frontend on `:3000`, backend on `:5001`, AI service on `:8000`. Without Docker, 
 | `REED_API_KEY`, `ADZUNA_APP_ID`, `ADZUNA_API_KEY` | AI service | Job sources |
 | `AI_SERVICE_URL` | backend | Where the backend reaches the AI service |
 | `FRONTEND_URL` | backend | Used to build the links in emails |
+| `CRON_SECRET`, `BACKEND_URL` | backend | Lets a scheduler start the daily Scout run; public address for unsubscribe links |
 | `MAIL_RELAY_URL`, `MAIL_RELAY_SECRET` | backend | Free email through Gmail ([setup](docs/mail-relay.md)) |
 | `RESEND_API_KEY`, `MAIL_FROM` | backend | Optional alternative once a domain is verified |
 
@@ -186,6 +192,7 @@ Tests: `cd ai-service && pip install pytest -r requirements.docker.txt && pytest
 | If you want to see | Open |
 |---|---|
 | Employer board connectors, register check, ranking | [`ai-service/sponsor_boards.py`](ai-service/sponsor_boards.py) and its tests |
+| The Scout (wording reader, picking) and its tests | [`ai-service/scout.py`](ai-service/scout.py), [`backend/services/scoutService.js`](backend/services/scoutService.js) |
 | The visa salary rules and their tests | [`ai-service/visa_rules.py`](ai-service/visa_rules.py) |
 | The grounded CV question endpoint | `ai-service/main.py` (`/interview/cv-questions`) |
 | Auth, reset, confirmation, rate limits | [`backend/controllers/authController.js`](backend/controllers/authController.js), [`backend/utils/mailer.js`](backend/utils/mailer.js) |
