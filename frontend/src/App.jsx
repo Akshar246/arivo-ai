@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import axios from "axios";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import Login from "./pages/Login";
@@ -13,6 +13,8 @@ import ATS from "./pages/ATS";
 import JobDetail from "./pages/JobDetail";
 import EmailLink from "./pages/EmailLink";
 import { readEmailLink } from "./constants/emailLink";
+import Legal from "./pages/Legal";
+import LegalLinks from "./components/LegalLinks";
 import "./App.css";
 
 /// ─────────────────────────────────────────────
@@ -310,9 +312,21 @@ function VerifyBanner() {
 // ─────────────────────────────────────────────
 // APP ROUTER
 // ─────────────────────────────────────────────
+// The privacy policy and terms live at #/privacy and #/terms and open without signing in
+const readLegal = () => {
+  const h = typeof window === "undefined" ? "" : window.location.hash.replace(/^#\/?/, "");
+  return h === "privacy" || h === "terms" ? h : null;
+};
+
 function AppRouter() {
   const { currentUser } = useAuth();
   const [emailLink, setEmailLink] = useState(readEmailLink);
+  const [legal, setLegal] = useState(readLegal);
+  useEffect(() => {
+    const onHash = () => setLegal(readLegal());
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
   const [page, setPage] = useState("dashboard");
   const [showLanding, setShowLanding] = useState(true);
   const [selectedJob, setSelectedJob] = useState(null);
@@ -330,6 +344,18 @@ function AppRouter() {
       setPage(nextPage);
     }
   };
+
+  if (legal) {
+    return (
+      <Legal
+        kind={legal}
+        onBack={() => {
+          window.history.pushState("", document.title, window.location.pathname + window.location.search);
+          setLegal(null);
+        }}
+      />
+    );
+  }
 
   // Opened from a reset or confirmation email
   if (emailLink) {
@@ -395,6 +421,7 @@ function AppRouter() {
       <NavBar page={page} setPage={handleNavigate} />
       <VerifyBanner />
       {renderPage()}
+      <LegalLinks />
     </div>
   );
 }

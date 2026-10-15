@@ -733,6 +733,39 @@ function DetailsCard({ profile, updateProfile, flash }) {
   );
 }
 
+// Everyone can take a copy of what we hold about them (UK data protection right of access)
+function ExportData({ token, flash }) {
+  const [busy, setBusy] = useState(false);
+
+  const download = async () => {
+    setBusy(true);
+    try {
+      const r = await axios.get(`${import.meta.env.VITE_API_URL}/api/profile/export`, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: "blob",
+      });
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "arivo-my-data.json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      flash("error", err.response?.status === 429 ? "You've downloaded your data a few times already. Try again later." : "Could not prepare your data");
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div className="prof-export">
+      <button className="prof-link-btn" onClick={download} disabled={busy}>{busy ? "Preparing…" : "Download my data"}</button>
+      <span className="prof-hint prof-hint--left">A copy of everything we hold about you, as a file.</span>
+    </div>
+  );
+}
+
 function DeleteAccount({ token, onDeleted, flash }) {
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState("");
@@ -1123,6 +1156,7 @@ export default function Profile({ onNavigate, initialTab }) {
               </button>
             )}
             <DetailsCard profile={profile} updateProfile={updateProfile} flash={flash} />
+            <ExportData token={token} flash={flash} />
             <DeleteAccount token={token} onDeleted={logout} flash={flash} />
           </div>
         )}
@@ -1848,6 +1882,7 @@ const CSS = `
 .prof-tag--btn { border: none; cursor: pointer; background: var(--s2); color: var(--tx2); font-family: inherit; }
 .prof-tag--btn.prof-tag--good { background: rgba(var(--c-ok-rgb),0.12); color: var(--tl); }
 .prof-danger { color: var(--red); }
+.prof-export { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
 .prof-delete { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
 .prof-delete .prof-input { flex: 1; min-width: 200px; }
 

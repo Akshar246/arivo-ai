@@ -8,6 +8,12 @@ router.use(protect);
 router.get("/", c.getProfile);
 router.put("/", c.updateProfile);
 router.delete("/", c.deleteAccount);
+// Reads everything held about the student, so keep it to a few times an hour
+router.get(
+  "/export",
+  rateLimit({ windowMs: 60 * 60 * 1000, max: 6, message: "You've downloaded your data a few times already. Try again later.", key: (req) => String(req.user.id) }),
+  c.exportData,
+);
 router.put("/skills", c.setSkills);
 router.put("/gap", c.saveGap);
 router.patch("/plan", c.setPlanItem);

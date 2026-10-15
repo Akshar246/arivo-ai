@@ -222,4 +222,24 @@ const cvQuestions = async (req, res) => {
   }
 };
 
-module.exports = { cvQuestions, deleteAccount, getProfile, updateProfile, setSkills, saveGap, setPlanItem, saveAts };
+// "Download my data": everything held about the signed-in student, as a JSON file. Sign-in and
+// reset secrets are left out, because they protect the account and are not the student's data.
+const exportData = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).lean();
+    if (!user) return gone(res);
+    const [applications, scoutPicks] = await Promise.all([
+      Application.find({ user: user._id }).lean(),
+      ScoutPick.find({ user: user._id }).lean(),
+    ]);
+    const { password, verifyTokenHash, verifyExpiresAt, resetTokenHash, resetExpiresAt, __v, ...account } = user;
+    res.setHeader("Content-Disposition", 'attachment; filename="arivo-my-data.json"');
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ exportedAt: new Date().toISOString(), account, applications, scoutPicks });
+  } catch (err) {
+    console.error("Export error:", err.message);
+    res.status(500).json({ message: "Could not prepare your data" });
+  }
+};
+
+module.exports = { exportData, cvQuestions, deleteAccount, getProfile, updateProfile, setSkills, saveGap, setPlanItem, saveAts };

@@ -37,6 +37,7 @@ function Reveal({ children, className = "" }) {
 }
 
 import ThemeToggle from "../components/ThemeToggle";
+import { CONTACT_EMAIL } from "../constants/legal";
 
 export default function Landing({ onGetStarted }) {
   return (
@@ -210,9 +211,9 @@ export default function Landing({ onGetStarted }) {
         <div className="footer-inner">
           <span className="logo">Arivo AI</span>
           <div className="footer-links">
-            <span>Privacy</span>
-            <span>Terms</span>
-            <span>Contact</span>
+            <a href="#/privacy">Privacy</a>
+            <a href="#/terms">Terms</a>
+            <a href={`mailto:${CONTACT_EMAIL}`}>Contact</a>
           </div>
         </div>
       </footer>
@@ -390,6 +391,8 @@ const styles = `
 .footer-inner {max-width:1200px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;gap:2rem;}
 
 .footer-links {display:flex;gap:2rem;font-size:0.9rem;color:var(--c-ink-2);}
+.footer-links a {color:inherit;text-decoration:none;}
+.footer-links a:hover {color:var(--c-ink);text-decoration:underline;}
 
 /* RESPONSIVE */
 @media (max-width: 768px) {

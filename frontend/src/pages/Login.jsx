@@ -611,6 +611,10 @@ export default function Login({ onLogin }) {
                 "Sign In →"
               )}
             </button>
+            <p className="agree-note">
+              By continuing you agree to the <a href="#/terms">Terms</a> and the <a href="#/privacy">Privacy Policy</a>.
+            </p>
+
             {loading && slow && (
               <p className="slow-note" role="status">
                 Waking up the server. It's on free hosting, so the first sign-in after a quiet spell can take up to a minute.
@@ -705,6 +709,8 @@ const styles = `
 .remember-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .forgot-link { background: none; border: none; padding: 0; color: var(--c-green); font: 600 0.87rem var(--font-body); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .forgot-back { display: block; margin: 16px auto 0; color: var(--c-ink-2); font-weight: 500; }
+.agree-note { font-size: 0.78rem; line-height: 1.5; color: var(--c-ink-3); margin: 12px 0 0; text-align: center; }
+.agree-note a { color: var(--c-ink-2); text-decoration: underline; text-underline-offset: 2px; }
 .slow-note { font-size: 0.82rem; line-height: 1.55; color: var(--c-ink-2); margin: 12px 0 0; text-align: center; }
 .forgot-sent p { color: var(--c-ink-2); font-size: 0.95rem; line-height: 1.6; margin: 0 0 22px; }
 `;

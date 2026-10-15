@@ -37,6 +37,7 @@
 | **ATS check with an International Student Lens** | Scores a CV the way applicant tracking software parses it, and flags conventions from other countries, such as a photo or date of birth, that quietly fail UK screening. |
 | **Application tracker** | Saved, applied, interview, offer, rejected, with notes and a stored interview pack per role. |
 | **Skill gap plan** | The student's CV skills against current London postings for their target role, with a learning plan. |
+| **Privacy and control** | A plain-English privacy policy and terms (no sign-in needed), "Download my data" for a full copy of what is held about you, account deletion that removes everything, and an opt-in Scout with one-click unsubscribe. |
 | **Light and dark themes** | One design system with shared tokens, tested at phone and desktop widths. |
 
 <table>
@@ -145,6 +146,8 @@ More detail is in [`docs/architecture.md`](docs/architecture.md).
 - [x] Application tracker, interview packs, voice practice, UK style feedback, questions from the CV
 - [x] Jobs from verified sponsor employers, early career ranking, full descriptions
 - [x] One design system with light and dark themes
+- [x] Privacy policy, terms of use and a data download, written from what the code actually stores
+- [x] Security audit and hardening of all three services ([`docs/security.md`](docs/security.md))
 - [x] Stricter employer name matching, measured on real data
 - [x] Sponsorship Scout: daily scan, posting-wording evidence, digest email with one-click unsubscribe, dashboard panel
 - [x] A first visa salary check on every job (salary against the published Skilled Worker figures, with the rule date and source shown)
