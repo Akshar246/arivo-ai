@@ -222,7 +222,7 @@ AI Service → Hugging Face Spaces, Docker (free)
 Database → MongoDB Atlas M0 (free)
 ChromaDB → Stored on the AI service's disk (rebuilt on a cold start)
 Email → Google Apps Script relay sending from Gmail (see docs/mail-relay.md), Resend as an optional fallback
-CI → GitHub Actions runs the AI service tests on every push
+CI → GitHub Actions (ci.yml) runs lint, build, tests, dependency audits and a secret scan for all three services on every push; Dependabot opens weekly update pull requests
 
 Vercel and Render deploy automatically when `main` is pushed. The Hugging Face Space is a
 separate git repository and is updated by pushing the AI service files to it.

@@ -2,7 +2,7 @@
 
 **Job search for international students in the UK, built around the one question generic job boards can't answer: can this employer legally hire me?**
 
-[![Tests](https://github.com/Akshar246/arivo-ai/actions/workflows/test.yml/badge.svg)](https://github.com/Akshar246/arivo-ai/actions/workflows/test.yml)
+[![CI](https://github.com/Akshar246/arivo-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/Akshar246/arivo-ai/actions/workflows/ci.yml)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![React](https://img.shields.io/badge/React-19-0f3d2e)
 ![Node](https://img.shields.io/badge/Node.js-Express_5-0f3d2e)
@@ -133,9 +133,16 @@ More detail is in [`docs/architecture.md`](docs/architecture.md).
 
 ## Quality
 
-- **95 automated tests** on the AI service run in CI on every push: sponsor matching, the quote check behind the CV questions, employer board parsing for all four providers, register verification, UK location detection, ranking, salary cleanup, the visa salary rules, the Scout's sponsorship wording reader, the employer name matcher and the AI service's security layer (authentication, rate limits, request-forgery protection, input limits, CORS).
-- The frontend lints and builds cleanly on every change I make. 13 older lint errors remain in three files I have not got to yet.
-- Honest gap: there are no automated tests yet for the Node backend or the React screens. They are covered by manual checks in a real browser, and automated coverage is on the list.
+Every push and pull request runs a pipeline ([`ci.yml`](.github/workflows/ci.yml)) with no real API keys, so it is safe for forks too:
+
+- **Frontend:** lint (zero errors), production build, dependency audit.
+- **Backend:** every file parses, **19 tests**, dependency audit. The tests cover the behaviours that matter for security: sessions stop working after a password reset, forged, expired and unsigned tokens are refused, the scheduler endpoint rejects a wrong or short secret, the unsubscribe link cannot be made from a login token, rate limits, and HTML in names cannot inject markup into emails.
+- **AI service:** **95 tests**, dependency audit. They cover sponsor matching, the quote check behind the CV questions, employer board parsing for all four providers, register verification, ranking, the visa salary rules, the Scout's wording reader, employer name matching, and the security layer (authentication, rate limits, request-forgery protection, input limits, CORS). One test fails if a new route is ever added without authentication.
+- **Secret scan** over the full git history, and **weekly dependency update pull requests** from Dependabot.
+
+I check that tests can fail, not only pass: for example, breaking the "session before a password reset" check makes exactly the two tests that cover it fail.
+
+What is not covered yet: automated tests for the React screens. They are checked by hand in a real browser, and end-to-end browser tests are on the list.
 
 ## Roadmap
 

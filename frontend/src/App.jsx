@@ -15,7 +15,6 @@ import EmailLink from "./pages/EmailLink";
 import { readEmailLink } from "./constants/emailLink";
 import Legal from "./pages/Legal";
 import LegalLinks from "./components/LegalLinks";
-import "./App.css";
 
 /// ─────────────────────────────────────────────
 // NAVIGATION

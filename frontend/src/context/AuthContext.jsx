@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState } from "react";
 
 // ─────────────────────────────────────────────
 // Create the context — this is the shared space
@@ -13,27 +13,23 @@ const AuthContext = createContext(null);
 // to every single component in the app
 // ─────────────────────────────────────────────
 export function AuthProvider({ children }) {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [token, setToken] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  // Check if user was already logged in
-  // Runs once when app first loads
-  useEffect(() => {
+  // Was the student already signed in? Read once, while the state is created, so there is no
+  // flash of the signed-out page and no state change inside an effect.
+  const [stored] = useState(() => {
     try {
       // "Keep me signed in" lives in localStorage, otherwise the tab's sessionStorage
       const store = localStorage.getItem("arivo_token") ? localStorage : sessionStorage;
       const savedToken = store.getItem("arivo_token");
       const savedUser = store.getItem("arivo_user");
-      if (savedToken && savedUser) {
-        setToken(savedToken);
-        setCurrentUser(JSON.parse(savedUser));
-      }
+      if (savedToken && savedUser) return { token: savedToken, user: JSON.parse(savedUser) };
     } catch {
       /* storage unavailable or corrupted: stay signed out */
     }
-    setLoading(false);
-  }, []);
+    return { token: null, user: null };
+  });
+  const [currentUser, setCurrentUser] = useState(stored.user);
+  const [token, setToken] = useState(stored.token);
+  const loading = false;
 
   // Save user and token after successful login
   const clearStored = () => {

@@ -111,10 +111,10 @@ const convertToUKFormat = (cvText) => {
 
   // Remove DOB patterns (various formats)
   const dobPatterns = [
-    /date\s+of\s+birth[:\s]+[\d\s/\-\.]+/gi,
-    /dob[:\s]+[\d\s/\-\.]+/gi,
-    /born[:\s]+[\d\s/\-\.]+/gi,
-    /\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/g,
+    /date\s+of\s+birth[:\s]+[\d\s/.-]+/gi,
+    /dob[:\s]+[\d\s/.-]+/gi,
+    /born[:\s]+[\d\s/.-]+/gi,
+    /\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b/g,
   ];
   dobPatterns.forEach(pattern => {
     if (pattern.test(converted)) {
@@ -161,7 +161,6 @@ const convertToUKFormat = (cvText) => {
     { us: /\banalyze\b/gi, uk: "analyse", label: "analyze→analyse" },
     { us: /\blicense\b/gi, uk: "licence", label: "license→licence" },
   ];
-  const converted_text = converted;
   const flagged = [];
   ukConversions.forEach(({ us, uk, label }) => {
     if (us.test(converted)) {
@@ -184,9 +183,9 @@ const calculateRiskScore = (atsScore, jobDescription, cvText) => {
   const skillsMatch = jobWords.length > 0 ? Math.round((matchedWords.length / jobWords.length) * 100) : 0;
 
   // Calculate risk level
-  let riskLevel = "HIGH RISK";
-  let riskColor = C.red;
-  let recommendation = "";
+  let riskLevel;
+  let riskColor;
+  let recommendation;
 
   if (atsScore >= 75 && skillsMatch >= 70) {
     riskLevel = "LOW RISK";
