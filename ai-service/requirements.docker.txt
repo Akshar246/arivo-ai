@@ -38,7 +38,7 @@ requests==2.34.2
  
 # ML model (skill gap scorer)
 joblib==1.5.3
-scikit-learn==1.8.0
+scikit-learn==1.9.1
  
 # Data validation
 pydantic==2.13.4
