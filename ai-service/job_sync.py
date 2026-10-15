@@ -77,7 +77,7 @@ def load_official_sponsors():
         if org_name:
             sponsors.add(org_name)
 
-    print(f"Loaded {len(sponsors):,} official Tier 2 sponsors")
+    print(f"Loaded {len(sponsors):,} official Skilled Worker sponsors")
     return sponsors
 
 

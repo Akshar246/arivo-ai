@@ -20,6 +20,7 @@ import joblib
 import sponsor_boards
 import visa_rules
 import scout
+import sponsor_match
 import threading
 import tempfile
 import os
@@ -98,7 +99,7 @@ sponsors_cache_date = None
 # ─────────────────────────────────────────────
 # LOAD HOME OFFICE SPONSOR LIST
 # Downloads the official UK government CSV
-# containing 120,000+ registered Tier 2 sponsors
+# containing 120,000+ organisations licensed for the Skilled Worker route
 # across every industry — tech, medical, law,
 # finance, education, retail, everything
 # Caches the result for the whole day
@@ -172,25 +173,24 @@ def load_sponsors_quick():
 # Uses partial matching to handle variations like
 # "Revolut Ltd" matching "Revolut"
 # ─────────────────────────────────────────────
+# The matcher index is built once per register load (building it for ~122,000 names on every
+# call would be far too slow). Holding the set itself, not just its id, stops a new set that
+# happens to reuse the same id from being served a stale index.
+_match_cache = {"set": None, "size": -1, "index": None}
+
+
+def _sponsor_index(sponsors_set):
+    if _match_cache["set"] is not sponsors_set or _match_cache["size"] != len(sponsors_set):
+        _match_cache.update(set=sponsors_set, size=len(sponsors_set), index=sponsor_match.build_index(sponsors_set))
+    return _match_cache["index"]
+
+
 def is_sponsor(company_name, sponsors_set):
+    # Strict matching: see sponsor_match.py for why the old "name contains a register entry"
+    # rule was replaced (it flagged companies on tiny fragments such as "alt" inside "healthcare").
     if not sponsors_set:
         return False
-
-    company_lower = company_name.strip().lower()
-
-    if not company_lower:
-        return False
-
-    # Direct match first — fastest
-    if company_lower in sponsors_set:
-        return True
-
-    # Partial match — handles name variations
-    for sponsor in sponsors_set:
-        if company_lower in sponsor or sponsor in company_lower:
-            return True
-
-    return False
+    return sponsor_match.match(company_name, _sponsor_index(sponsors_set)) is not None
 
 
 # ─────────────────────────────────────────────
@@ -331,7 +331,7 @@ def fetch_live_jobs(
                 work_mode = "onsite"
 
             doc = Document(
-                page_content=f"{company} | {title} | {job_location} | {salary} | {'Official Tier 2 Visa Sponsor' if visa_sponsor else 'Sponsorship not confirmed'} | {description}",
+                page_content=f"{company} | {title} | {job_location} | {salary} | {'Official UK Skilled Worker visa sponsor' if visa_sponsor else 'Sponsorship not confirmed'} | {description}",
                 metadata={
                     "company": company,
                     "title": title,
@@ -425,7 +425,7 @@ def fetch_reed_jobs(query, max_results=25, location="london"):
                 work_mode = "onsite"
 
             doc = Document(
-                page_content=f"{company} | {title} | {job_location} | {salary} | {'Official Tier 2 Visa Sponsor' if visa_sponsor else 'Sponsorship not confirmed'} | {description}",
+                page_content=f"{company} | {title} | {job_location} | {salary} | {'Official UK Skilled Worker visa sponsor' if visa_sponsor else 'Sponsorship not confirmed'} | {description}",
                 metadata={
                     "company": company,
                     "title": title,
@@ -605,7 +605,7 @@ class CVRequest(BaseModel):
 class SkillGapAnalyseRequest(BaseModel):
     user_skills: list  # skills from CV or manually entered
     target_role: str  # e.g. "ML Engineer", "Teacher", "Nurse"
-    visa_only: bool = False  # focus only on Tier 2 sponsor jobs
+    visa_only: bool = False  # focus only on Skilled Worker sponsor jobs
 
 
 # ─────────────────────────────────────────────
@@ -636,13 +636,13 @@ The user is providing their home-country experience.
 Your job: 
 1. Translate the prestige of their foreign companies to UK equivalents (e.g., if they say HDFC Bank, say "That is India's largest private bank, equivalent to Barclays UK"). 
 2. Rewrite their bullet points to be quantifiable, highly confident, and culturally aligned with London's corporate scene. Remove all passive/deferential language.""",
-        "visa": """You are a ruthless but highly strategic UK Immigration Advisor. 
-Look at the SYSTEM ALERTS in the context below regarding the company's sponsor status. 
-If they ARE a sponsor: Give the user a confident, non-desperate script on exactly when and how to ask for the Skilled Worker Visa (e.g., wait until the end of the HR screen). 
-If they ARE NOT a sponsor: Tell them bluntly NOT to waste their time interviewing. Do not give generic advice. Give tactical, script-based advice.""",
+        "visa": """You are Arivo's guide to UK visa sponsorship for international students. You give general information, not immigration advice: you are not a regulated immigration adviser, and you say so briefly when someone asks what they should do about their own visa. For decisions that affect their visa, point them to gov.uk and their university's international student advice team.
+Look at the SYSTEM ALERTS in the context below regarding the company's sponsor status.
+If the employer IS on the Home Office register: say so, remind them that being on the register does not mean this particular role is sponsored, and suggest a polite, honest way to ask the employer whether the role can be sponsored. Always answer sponsorship questions on application forms truthfully.
+If the employer is NOT confirmed on the register: say plainly that it could not be confirmed (the name may differ from the legal name), that an employer without a licence cannot sponsor, and suggest checking the register or asking the employer directly before investing time. Give specific, practical next steps rather than generic advice.""",
         "interview": """You are a strict hiring manager at a top UK company. The user wants to practice an interview. 
 Ask them ONE tough technical or behavioral question based on their message. Wait for them to answer. 
-Grade their answer out of 10 based on the STAR method, give a quick blunt critique, and ask the next question.""",
+Give specific feedback on their answer against the STAR method (no numeric score), a quick direct critique, and ask the next question.""",
         "tone": """You are an expert in UK Corporate Culture and Communications. 
 The user will provide an email, cover letter, or interview answer. 
 Analyze it for: 1) Overly deferential/subservient language ("Respected Sir", "Kindly", "Do the needful"). 2) Passive voice. 3) Lack of directness. 

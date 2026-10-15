@@ -201,11 +201,11 @@ const COACH_MODES = [
   {
     id: "visa",
     icon: Ic.shield(),
-    name: "Visa Strategist",
-    desc: "How and when to ask for sponsorship.",
+    name: "Sponsorship Guide",
+    desc: "General information about sponsorship, not immigration advice.",
     suggestions: [
-      "When should I mention I need sponsorship?",
-      "Can I switch from a PSW to a Tier 2 visa?",
+      "How do I ask an employer about sponsorship?",
+      "Can I switch from a Graduate visa to a Skilled Worker visa?",
     ],
   },
   {

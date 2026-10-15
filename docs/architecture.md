@@ -35,7 +35,7 @@ independent services that communicate via REST APIs.
 - Groq API: LLM inference
 - Adzuna API: Live job listings
 - Reed API: UK job listings
-- Home Office: Tier 2 sponsor list
+- Home Office: register of licensed sponsors (Skilled Worker route)
 
 ## User Flow
 
@@ -200,7 +200,7 @@ GET /jobs/search → Semantic job search
 
 1. Every 24 hours a scheduled job runs
 2. Fetches latest listings from Adzuna and Reed APIs
-3. Downloads latest Home Office Tier 2 sponsor list
+3. Downloads latest Home Office register of licensed sponsors
 4. Converts all to vectors and updates ChromaDB
 5. MongoDB jobs collection updated
 6. Users see fresh data every day

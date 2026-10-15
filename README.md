@@ -87,6 +87,8 @@ These are in the code, not just the README.
 
 **Grounded CV interview questions.** The model must return, with each question, an exact quote from the CV it is based on. The service then checks that the quote really appears in the CV, ignoring line breaks and bullet characters, and drops any question whose quote does not. The prompt also forbids questions about age, nationality, family, health and similar topics. The check is a small pure function with its own tests, including a made-up quote that must be rejected. The CV text itself is read on the server and never sent to the browser.
 
+**Employer matching that errs on the safe side.** A wrong "on the register" badge is the worst mistake this product can make, so I measured the matching instead of trusting it. On 346 real employer names from Reed and Adzuna, my first rule flagged 120 as sponsors, and reading every match showed about a third were wrong: the rule treated a name as matching if either contained the other, and the register has tiny entries like "alt" that sit inside ordinary words such as "healthcare". A placeholder employer called "Unknown" was flagged too. The replacement normalises names (legal endings, "t/a" aliases), matches only when two names are equal or differ by generic words like "Group" or "Holdings", and never matches on a fragment. It flags 83, I read every change, and it is faster (about 0.4 seconds to index 122,000 names, then milliseconds). The cost is honest: real sponsors whose register entry carries a region word, such as "Starbucks EMEA", now show as "not confirmed", which is the safe mistake.
+
 **Reading postings for what they say about sponsorship.** The Scout finds the sentence in a posting that mentions sponsorship with plain patterns, not a model's guess, so every result is a quote the student can check. "We are unable to offer visa sponsorship" is a no. "Sponsorship is available" is an offer. Anything unclear stays "unclear", because silence is not a no. I tested it against about 1,770 real postings and read every distinct quote it found, which exposed three mislabels I would never have written tests for: "would not require sponsorship" is not an offer, "transfer of existing sponsorship" does not help a new graduate, and "we cannot offer relocation but we can sponsor" is two statements in one sentence. All three are now fixed and tested. At the time of writing, of those postings about 80 said they could not sponsor, about 85 said they could, and the rest said nothing.
 
 **Authentication that holds up.** Passwords are hashed with bcrypt. Password reset and email confirmation use random one-time tokens, of which only the SHA-256 hash is stored, so a leaked database cannot be used to reset anyone's account. The reset form answers identically whether or not an address exists, so it cannot be used to find out who has an account. Each sensitive route has its own rate limit. After a reset, every session issued before it is rejected. Accounts and all their data can be deleted by the student.
@@ -128,7 +130,7 @@ More detail is in [`docs/architecture.md`](docs/architecture.md).
 
 ## Quality
 
-- **53 automated tests** on the AI service run in CI on every push: sponsor matching, the quote check behind the CV questions, employer board parsing for all four providers, register verification, UK location detection, ranking, salary cleanup, the visa salary rules and the Scout's sponsorship wording reader.
+- **63 automated tests** on the AI service run in CI on every push: sponsor matching, the quote check behind the CV questions, employer board parsing for all four providers, register verification, UK location detection, ranking, salary cleanup, the visa salary rules, the Scout's sponsorship wording reader and the employer name matcher.
 - The frontend lints and builds cleanly on every change I make. 13 older lint errors remain in three files I have not got to yet.
 - Honest gap: there are no automated tests yet for the Node backend or the React screens. They are covered by manual checks in a real browser, and automated coverage is on the list.
 
@@ -141,6 +143,7 @@ More detail is in [`docs/architecture.md`](docs/architecture.md).
 - [x] Application tracker, interview packs, voice practice, UK style feedback, questions from the CV
 - [x] Jobs from verified sponsor employers, early career ranking, full descriptions
 - [x] One design system with light and dark themes
+- [x] Stricter employer name matching, measured on real data
 - [x] Sponsorship Scout: daily scan, posting-wording evidence, digest email with one-click unsubscribe, dashboard panel
 - [x] A first visa salary check on every job (salary against the published Skilled Worker figures, with the rule date and source shown)
 
@@ -150,14 +153,13 @@ More detail is in [`docs/architecture.md`](docs/architecture.md).
 2. **Visa runway and cost planner.** Months left turned into milestones, with a plain calculator for visa fees built from published figures.
 3. **Application helper**, then a **live mock interviewer** that asks follow-up questions.
 4. **Wider coverage.** Banks, consultancies, retailers and the NHS publish through systems the current connectors do not read. Adding them is the biggest gap in the job list.
-5. **Stricter company matching** for Reed and Adzuna listings, which still use name matching that can be too loose for short names.
 
 ## Known limitations
 
 - Direct employer jobs cover tech, fintech and AI employers today. Other sectors come from Reed and Adzuna only.
 - Being on the register does not mean a particular role is sponsored. The product says so wherever it shows a badge.
 - Generated questions, feedback and summaries come from a language model. They are practice material, not predictions, and are labelled as AI generated.
-- Matching of Reed and Adzuna company names to the register is name based and can miss subsidiaries or occasionally match too broadly.
+- Matching of Reed and Adzuna company names to the register is deliberately strict. Some real sponsors show as "not confirmed" when their register entry carries a region word or a different legal name. It never claims a sponsor it can't match.
 - The Scout reads the full posting for direct employer jobs. For Reed and Adzuna it often has only a preview, and says so, because a "no sponsorship" line further down would be missed.
 - The free hosting tiers are slow to wake. The Gmail relay allows roughly 100 emails a day, which is enough for now.
 
@@ -192,6 +194,7 @@ Tests: `cd ai-service && pip install pytest -r requirements.docker.txt && pytest
 | If you want to see | Open |
 |---|---|
 | Employer board connectors, register check, ranking | [`ai-service/sponsor_boards.py`](ai-service/sponsor_boards.py) and its tests |
+| Employer name matching and its tests | [`ai-service/sponsor_match.py`](ai-service/sponsor_match.py) |
 | The Scout (wording reader, picking) and its tests | [`ai-service/scout.py`](ai-service/scout.py), [`backend/services/scoutService.js`](backend/services/scoutService.js) |
 | The visa salary rules and their tests | [`ai-service/visa_rules.py`](ai-service/visa_rules.py) |
 | The grounded CV question endpoint | `ai-service/main.py` (`/interview/cv-questions`) |
