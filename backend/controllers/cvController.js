@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const axios = require("axios");
+const { aiHeaders } = require("../utils/aiHeaders");
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:8000";
 const FormData = require("form-data");
 const User = require("../models/User");
@@ -42,7 +43,7 @@ const extractTextFromPDF = async (filePath) => {
     const response = await axios.post(
       `${AI_SERVICE_URL}/extract-pdf`,
       form,
-      { headers: form.getHeaders() }
+      { headers: { ...form.getHeaders(), ...aiHeaders() } }
     );
 
     console.log(`Extracted ${response.data.characters} characters from ${response.data.pages} pages`);
@@ -68,7 +69,8 @@ const extractSkillsWithAI = async (cvText) => {
 
     const response = await axios.post(
       `${AI_SERVICE_URL}/extract-skills`,
-      { cv_text: truncatedText }
+      { cv_text: truncatedText },
+      { headers: aiHeaders(), timeout: 60000 }
     );
     return response.data.skills;
   } catch (error) {
@@ -82,25 +84,33 @@ const extractSkillsWithAI = async (cvText) => {
 //       extraction → send text to Groq for
 //       skill identification → return results
 // ─────────────────────────────────────────────
-const uploadCV = async (req, res) => {
+const looksLikePdf = (filePath) => {
+  const fd = fs.openSync(filePath, "r");
   try {
-    // Check file was actually uploaded
+    const buf = Buffer.alloc(5);
+    fs.readSync(fd, buf, 0, 5, 0);
+    return buf.toString("latin1") === "%PDF-";
+  } finally {
+    fs.closeSync(fd);
+  }
+};
+
+const uploadCV = async (req, res) => {
+  // The uploaded file holds personal data, so it is deleted on every path, success or failure
+  const filePath = req.file?.path;
+  try {
     if (!req.file) {
       return res.status(400).json({ message: "Please upload a PDF file" });
     }
+    if (!looksLikePdf(filePath)) {
+      return res.status(400).json({ message: "That file isn't a valid PDF." });
+    }
 
-    const filePath = req.file.path;
-
-    // Step 1 — Extract text from PDF via Python
-    console.log("Extracting text from PDF...");
+    // Step 1 — Extract text from the PDF in the AI service
     const rawText = await extractTextFromPDF(filePath);
 
-    // Step 2 — Send text to Groq for skill extraction
-    console.log("Extracting skills with AI...");
+    // Step 2 — Send text to the language model for skill extraction
     const skills = await extractSkillsWithAI(rawText);
-
-    // Step 3 — Delete temp PDF file after processing
-    fs.unlinkSync(filePath);
 
     // Step 3b — Save to the career profile. CV skills are replaced;
     // manual and learned skills are kept.
@@ -126,19 +136,11 @@ const uploadCV = async (req, res) => {
     });
 
   } catch (error) {
+    // Log the detail server side; the client only gets a generic message
     console.error("CV upload error:", error.message);
-    console.error("Full stack:", error.stack);
-    console.error("Error details:", JSON.stringify({
-      message: error.message,
-      code: error.code,
-      path: error.path,
-      errno: error.errno,
-    }));
-    res.status(500).json({
-      message: "Error processing CV",
-      error: error.message,
-      details: process.env.NODE_ENV === "development" ? error.stack : undefined
-    });
+    res.status(500).json({ message: "We couldn't process that CV. Please try again." });
+  } finally {
+    if (filePath) fs.unlink(filePath, () => {});
   }
 };
 

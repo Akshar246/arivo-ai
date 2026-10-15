@@ -28,7 +28,7 @@ if (fs.existsSync(envPath)) {
         ) {
           val = val.slice(1, -1);
         }
-        process.env[key.trim()] = val;
+        if (process.env[key.trim()] === undefined) process.env[key.trim()] = val;
       }
     }
   });
@@ -40,6 +40,17 @@ if (fs.existsSync(envPath)) {
 // ─────────────────────────────────────────────
 // CONNECT TO MONGODB
 // ─────────────────────────────────────────────
+// Sessions are signed with JWT_SECRET. A missing or very short secret would let anyone forge a
+// login, so production refuses to start without one. Below 32 characters it still starts but warns.
+const jwtSecretLength = (process.env.JWT_SECRET || "").length;
+if (process.env.NODE_ENV === "production" && jwtSecretLength < 16) {
+  console.error("FATAL: JWT_SECRET must be set and at least 16 characters (32 or more is recommended).");
+  process.exit(1);
+}
+if (process.env.NODE_ENV === "production" && jwtSecretLength < 32) {
+  console.warn("WARNING: JWT_SECRET is shorter than 32 characters. Replace it with a longer random value.");
+}
+
 connectDB();
 
 // Initialize Express App
@@ -69,16 +80,25 @@ app.use(
       "http://localhost:3000",
       process.env.FRONTEND_URL, // e.g. Vercel deployment URL
     ].filter(Boolean),
-    credentials: true,
+    // Sessions travel in the Authorization header, not cookies, so credentials are not needed
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    maxAge: 600,
   })
 );
 
 // Logging
-app.use(morgan("dev"));
+// Log the path only: some links carry a token in the query string (e.g. unsubscribe)
+morgan.token("path", (req) => req.path);
+app.use(morgan(":method :path :status :response-time ms"));
 
 // Request Parsers
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "100kb" }));
+app.use(express.urlencoded({ extended: false, limit: "100kb" }));
+
+// A general ceiling per address on top of the stricter limits on sign-in, reset and AI routes
+const { rateLimit } = require("./middleware/rateLimit");
+app.use("/api", rateLimit({ windowMs: 15 * 60 * 1000, max: 600, message: "Too many requests. Please slow down." }));
 
 // ─────────────────────────────────────────────
 // ROUTES
@@ -110,15 +130,23 @@ app.get("/", (req, res) => {
 
 // 404 Handler for unknown routes
 app.use((req, res, next) => {
-  res.status(404).json({ message: `Route not found: ${req.originalUrl}` });
+  res.status(404).json({ message: "Route not found" });
 });
 
 // Global Error Handler
 app.use((err, req, res, next) => {
-  console.error("🔥 Global Error Handler Caught:", err.stack || err.message);
-  res.status(err.status || 500).json({
-    message: err.message || "Internal Server Error",
-  });
+  // Known client mistakes get a short, fixed message. Nothing internal (parser wording, paths,
+  // stack traces) is ever sent to the client; the detail stays in the server log.
+  if (err.name === "MulterError") {
+    const tooBig = err.code === "LIMIT_FILE_SIZE";
+    return res.status(tooBig ? 413 : 400).json({ message: tooBig ? "That file is too large (5 MB maximum)." : "That upload isn't accepted." });
+  }
+  if (err.type === "entity.parse.failed") return res.status(400).json({ message: "Invalid request body" });
+  if (err.type === "entity.too.large") return res.status(413).json({ message: "Request too large" });
+
+  const status = err.status || err.statusCode || 500;
+  if (status >= 500) console.error("🔥 Server error:", err.stack || err.message);
+  res.status(status).json({ message: status >= 500 ? "Internal Server Error" : err.message || "Request failed" });
 });
 
 // ─────────────────────────────────────────────

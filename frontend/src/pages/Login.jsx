@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import ThemeToggle from "../components/ThemeToggle";
@@ -267,35 +267,8 @@ export default function Login({ onLogin }) {
     password: "",
   });
 
-  // 🛑 ESLINT FIX 1: Push Token Catcher state updates to the next tick to prevent cascading renders
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get("token");
-    const oauthError = params.get("error");
-
-    if (token) {
-      setTimeout(() => {
-        login(null, token);
-        window.history.replaceState(
-          {},
-          document.title,
-          window.location.pathname,
-        );
-        onLogin();
-      }, 0);
-    }
-
-    if (oauthError) {
-      setTimeout(() => {
-        setError("Social login failed. Please try again or use email.");
-        window.history.replaceState(
-          {},
-          document.title,
-          window.location.pathname,
-        );
-      }, 0);
-    }
-  }, [login, onLogin]);
+  // A sign-in token in the address bar is never accepted. Logging in from a link would let
+  // anyone send a victim a crafted link that signs them into the attacker's account.
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });

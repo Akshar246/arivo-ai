@@ -60,6 +60,8 @@ async function sendMail(message) {
 
 const appUrl = () => (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
 
+const esc = (s) => String(s || "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
 const shell = (heading, body, buttonLabel, url) => `
 <div style="font-family:Georgia,serif;background:#f5f1e8;padding:32px">
   <div style="max-width:480px;margin:0 auto;background:#fffdf8;border:1px solid #e3dccb;border-radius:12px;padding:32px;color:#15231c">
@@ -77,7 +79,7 @@ const sendVerificationEmail = (user, token) => {
     to: user.email,
     subject: "Confirm your email for Arivo AI",
     text: `Hi ${user.name},\n\nConfirm your email address so we can reach you if you ever lose access:\n${url}\n\nThis link works for 3 days. If you didn't create an Arivo account, ignore this email.`,
-    html: shell("Confirm your email", `Hi ${user.name}, confirm your address so we can reach you if you ever lose access. The link works for 3 days.`, "Confirm email", url),
+    html: shell("Confirm your email", `Hi ${esc(user.name)}, confirm your address so we can reach you if you ever lose access. The link works for 3 days.`, "Confirm email", url),
   });
 };
 
@@ -87,7 +89,7 @@ const sendResetEmail = (user, token) => {
     to: user.email,
     subject: "Reset your Arivo AI password",
     text: `Hi ${user.name},\n\nChoose a new password here:\n${url}\n\nThis link works for 1 hour. If you didn't ask for this, ignore this email and your password stays the same.`,
-    html: shell("Reset your password", `Hi ${user.name}, use the button below to choose a new password. The link works for 1 hour. If you didn't ask for this, ignore this email and your password stays the same.`, "Choose a new password", url),
+    html: shell("Reset your password", `Hi ${esc(user.name)}, use the button below to choose a new password. The link works for 1 hour. If you didn't ask for this, ignore this email and your password stays the same.`, "Choose a new password", url),
   });
 };
 

@@ -8,7 +8,7 @@
 ![Node](https://img.shields.io/badge/Node.js-Express_5-0f3d2e)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Python-0f3d2e)
 
-**[Open the live app](https://arivo-ai-xi.vercel.app)** · [Backend API](https://arivo-backend-vp35.onrender.com) · [AI service](https://itsakshar-arivo-ai.hf.space/docs) · [LinkedIn](https://linkedin.com/in/akshar-chanchlani)
+**[Open the live app](https://arivo-ai-xi.vercel.app)** · [Backend API](https://arivo-backend-vp35.onrender.com) · [AI service](https://itsakshar-arivo-ai.hf.space) · [LinkedIn](https://linkedin.com/in/akshar-chanchlani)
 
 > The backend sleeps on its free host after 15 idle minutes, so the first request can take 30 to 50 seconds. After that it is quick.
 
@@ -91,6 +91,8 @@ These are in the code, not just the README.
 
 **Reading postings for what they say about sponsorship.** The Scout finds the sentence in a posting that mentions sponsorship with plain patterns, not a model's guess, so every result is a quote the student can check. "We are unable to offer visa sponsorship" is a no. "Sponsorship is available" is an offer. Anything unclear stays "unclear", because silence is not a no. I tested it against about 1,770 real postings and read every distinct quote it found, which exposed three mislabels I would never have written tests for: "would not require sponsorship" is not an offer, "transfer of existing sponsorship" does not help a new graduate, and "we cannot offer relocation but we can sponsor" is two statements in one sentence. All three are now fixed and tested. At the time of writing, of those postings about 80 said they could not sponsor, about 85 said they could, and the rest said nothing.
 
+**A security audit, not just good intentions.** I audited the whole stack and fixed what I found, in order of severity. The AI service had no authentication at all, so anyone could spend the model and job-API quotas, and one endpoint would fetch any URL it was given (I proved it tried to reach the cloud metadata address). It now needs a signed login token or a service key, is rate limited per caller, only fetches HTTPS pages from the job sites with every redirect re-checked, and caps every input. A leftover sign-in path accepted a login token from the address bar, which would let an attacker sign a victim into the attacker's account, so it is gone along with unused Google and LinkedIn code. Uploaded CVs were only deleted on success, and a 6 MB file returned a 500; both fixed. Dependencies went from 2 critical and 11 high advisories to none that have a fix, mostly by removing packages we never used. A guard test fails if a future route is added without authentication. The details, the safe rollout order and the risks I'm accepting are in [`docs/security.md`](docs/security.md).
+
 **Authentication that holds up.** Passwords are hashed with bcrypt. Password reset and email confirmation use random one-time tokens, of which only the SHA-256 hash is stored, so a leaked database cannot be used to reset anyone's account. The reset form answers identically whether or not an address exists, so it cannot be used to find out who has an account. Each sensitive route has its own rate limit. After a reset, every session issued before it is rejected. Accounts and all their data can be deleted by the student.
 
 **Email at zero cost.** Resend only delivers to arbitrary addresses once a domain is verified, and Render's free plan blocks SMTP. So reset and confirmation emails go out through a small Google Apps Script web app that sends from a Gmail account, guarded by a shared secret. The mailer falls back to Resend when it is configured. Setup is in [`docs/mail-relay.md`](docs/mail-relay.md).
@@ -130,7 +132,7 @@ More detail is in [`docs/architecture.md`](docs/architecture.md).
 
 ## Quality
 
-- **63 automated tests** on the AI service run in CI on every push: sponsor matching, the quote check behind the CV questions, employer board parsing for all four providers, register verification, UK location detection, ranking, salary cleanup, the visa salary rules, the Scout's sponsorship wording reader and the employer name matcher.
+- **95 automated tests** on the AI service run in CI on every push: sponsor matching, the quote check behind the CV questions, employer board parsing for all four providers, register verification, UK location detection, ranking, salary cleanup, the visa salary rules, the Scout's sponsorship wording reader, the employer name matcher and the AI service's security layer (authentication, rate limits, request-forgery protection, input limits, CORS).
 - The frontend lints and builds cleanly on every change I make. 13 older lint errors remain in three files I have not got to yet.
 - Honest gap: there are no automated tests yet for the Node backend or the React screens. They are covered by manual checks in a real browser, and automated coverage is on the list.
 
@@ -181,6 +183,9 @@ Frontend on `:3000`, backend on `:5001`, AI service on `:8000`. Without Docker, 
 | `REED_API_KEY`, `ADZUNA_APP_ID`, `ADZUNA_API_KEY` | AI service | Job sources |
 | `AI_SERVICE_URL` | backend | Where the backend reaches the AI service |
 | `FRONTEND_URL` | backend | Used to build the links in emails |
+| `AI_SERVICE_KEY` | backend and AI service | Shared key the backend uses to call the AI service |
+| `JWT_SECRET` | backend and AI service | Signs sessions (32+ characters). Setting it on the AI service switches its authentication on |
+| `ALLOWED_ORIGINS` | AI service | Websites allowed to call it from a browser |
 | `CRON_SECRET`, `BACKEND_URL` | backend | Lets a scheduler start the daily Scout run; public address for unsubscribe links |
 | `MAIL_RELAY_URL`, `MAIL_RELAY_SECRET` | backend | Free email through Gmail ([setup](docs/mail-relay.md)) |
 | `RESEND_API_KEY`, `MAIL_FROM` | backend | Optional alternative once a domain is verified |
@@ -194,6 +199,7 @@ Tests: `cd ai-service && pip install pytest -r requirements.docker.txt && pytest
 | If you want to see | Open |
 |---|---|
 | Employer board connectors, register check, ranking | [`ai-service/sponsor_boards.py`](ai-service/sponsor_boards.py) and its tests |
+| The AI service security layer and its tests | [`ai-service/security.py`](ai-service/security.py), [`docs/security.md`](docs/security.md) |
 | Employer name matching and its tests | [`ai-service/sponsor_match.py`](ai-service/sponsor_match.py) |
 | The Scout (wording reader, picking) and its tests | [`ai-service/scout.py`](ai-service/scout.py), [`backend/services/scoutService.js`](backend/services/scoutService.js) |
 | The visa salary rules and their tests | [`ai-service/visa_rules.py`](ai-service/visa_rules.py) |

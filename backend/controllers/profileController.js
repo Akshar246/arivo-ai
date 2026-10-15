@@ -3,6 +3,7 @@ const Application = require("../models/Application");
 const ScoutPick = require("../models/ScoutPick");
 const bcrypt = require("bcryptjs");
 const axios = require("axios");
+const { aiHeaders } = require("../utils/aiHeaders");
 
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:8000";
 
@@ -211,7 +212,7 @@ const cvQuestions = async (req, res) => {
         description: String(req.body?.description || "").slice(0, 2000),
         count: 4,
       },
-      { timeout: 60000 },
+      { timeout: 60000, headers: aiHeaders() },
     );
     if (data.error) return res.status(502).json({ message: data.error });
     res.json({ questions: data.questions || [] });

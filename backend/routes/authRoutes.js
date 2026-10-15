@@ -12,10 +12,6 @@ const {
   resetPassword,
   verifyEmail,
   resendVerification,
-  googleAuth,
-  googleCallback,
-  linkedinAuth,
-  linkedinCallback
 } = require("../controllers/authController");
 
 // ─────────────────────────────────────────────
@@ -61,16 +57,5 @@ router.post("/reset-password", resetLimit, resetPassword);
 router.post("/verify-email", resetLimit, verifyEmail);
 router.post("/resend-verification", protect, resendLimit, resendVerification);
 
-// ─────────────────────────────────────────────
-// GOOGLE OAUTH
-// ─────────────────────────────────────────────
-router.get("/google", googleAuth);
-router.get("/google/callback", googleCallback);
-
-// ─────────────────────────────────────────────
-// LINKEDIN OAUTH
-// ─────────────────────────────────────────────
-router.get("/linkedin", linkedinAuth);
-router.get("/linkedin/callback", linkedinCallback);
 
 module.exports = router;

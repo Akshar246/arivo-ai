@@ -1,4 +1,5 @@
 const axios = require("axios");
+const { aiHeaders } = require("../utils/aiHeaders");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const ScoutPick = require("../models/ScoutPick");
@@ -27,7 +28,7 @@ async function scanForUser(user) {
   const { data } = await axios.post(
     `${AI_SERVICE_URL()}/scout/analyse`,
     { ...p, seen, limit: 6 },
-    { timeout: 150000 },
+    { timeout: 150000, headers: aiHeaders() },
   );
   if (data.error) {
     const err = new Error(data.error);

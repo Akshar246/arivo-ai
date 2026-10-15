@@ -2,8 +2,8 @@
 # This stops the default urllib request from
 # conflicting with our requests library
 # ─────────────────────────────────────────────
-from fastapi import FastAPI, UploadFile, File
-from pydantic import BaseModel
+from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
 from langchain_groq import ChatGroq
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -20,6 +20,7 @@ import joblib
 import sponsor_boards
 import visa_rules
 import scout
+import security
 import sponsor_match
 import threading
 import tempfile
@@ -36,7 +37,17 @@ from bs4 import BeautifulSoup
 load_dotenv()
 
 # Create the FastAPI application
-app = FastAPI(title="Arivo AI Service", version="1.0.0")
+# Every route requires authentication and is rate limited (see security.py). The interactive API
+# docs are hidden once authentication is on, so the route list is not published.
+_docs = None if security.auth_enabled() else "/docs"
+app = FastAPI(
+    title="Arivo AI Service",
+    version="1.0.0",
+    dependencies=[Depends(security.require_auth), Depends(security.rate_limit)],
+    docs_url=_docs,
+    redoc_url=None,
+    openapi_url="/openapi.json" if _docs else None,
+)
 
 # Job searches return many full descriptions, so compress responses
 app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -47,19 +58,31 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 # send requests to this Python service
 # Without this — browser blocks all requests
 # ─────────────────────────────────────────────
+_default_origins = "http://localhost:5173,http://localhost:3000,https://arivo-ai-xi.vercel.app,https://arivo-ai.vercel.app"
+_allowed_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", _default_origins).split(",") if o.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://frontend:80",
-        "https://arivo-ai.vercel.app",
-        "https://*.vercel.app",
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_allowed_origins,
+    # Sessions travel in the Authorization header, not cookies, so credentials are not needed
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Service-Key"],
+    max_age=600,
 )
+
+
+@app.middleware("http")
+async def limit_body_size(request: Request, call_next):
+    # Refuse oversized bodies before they are read. Only the CV upload may be large.
+    limit = 6_000_000 if request.url.path == "/extract-pdf" else 1_000_000
+    try:
+        too_big = int(request.headers.get("content-length", "0")) > limit
+    except ValueError:
+        too_big = True
+    if too_big:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"detail": "Request too large"}, status_code=413)
+    return await call_next(request)
 
 # ─────────────────────────────────────────────
 # LLM SETUP
@@ -589,9 +612,9 @@ Job role:"""
 # FastAPI validates automatically — no extra code
 # ─────────────────────────────────────────────
 class ChatRequest(BaseModel):
-    message: str
-    session_id: str = "default"  # default session if not provided
-    mode: str = "general"
+    message: str = Field(max_length=4000)
+    session_id: str = Field("default", max_length=80)
+    mode: str = Field("general", max_length=20)
 
 
 class SkillGapRequest(BaseModel):
@@ -599,12 +622,12 @@ class SkillGapRequest(BaseModel):
 
 
 class CVRequest(BaseModel):
-    cv_text: str  # raw extracted text from CV
+    cv_text: str = Field(max_length=60000)  # raw extracted text from CV
 
 
 class SkillGapAnalyseRequest(BaseModel):
-    user_skills: list  # skills from CV or manually entered
-    target_role: str  # e.g. "ML Engineer", "Teacher", "Nurse"
+    user_skills: list = Field(max_length=100)  # skills from CV or manually entered
+    target_role: str = Field(max_length=120)  # e.g. "ML Engineer", "Teacher", "Nurse"
     visa_only: bool = False  # focus only on Skilled Worker sponsor jobs
 
 
@@ -616,16 +639,24 @@ class SkillGapAnalyseRequest(BaseModel):
 @app.get("/")
 def health_check():
     # Simple check to confirm service is running
-    return {"status": "Arivo AI Service is running"}
+    return {"status": "Arivo AI Service is running", "auth": "on" if security.auth_enabled() else "off"}
 
 
 @app.post("/chat")
-def chat(request: ChatRequest):
-    # Create new session if this session_id is new
-    if request.session_id not in sessions:
-        sessions[request.session_id] = []
+def chat(request: ChatRequest, http_request: Request):
+    # A session belongs to the signed-in caller, so two people can never share or read each
+    # other's conversation (the old shared "default" session did exactly that). The store and
+    # each history are bounded, so one caller cannot grow memory without limit.
+    caller = getattr(http_request.state, "caller", "anon")
+    session_key = f"{caller}:{request.session_id}"
+    if session_key not in sessions:
+        if len(sessions) >= 2000:
+            sessions.pop(next(iter(sessions)))  # drop the oldest session
+        sessions[session_key] = []
 
-    history = sessions[request.session_id]
+    history = sessions[session_key]
+    if len(history) > 40:
+        del history[:-40]
 
     # Dynamic Prompts based on User Module Selection
     system_prompts = {
@@ -822,18 +853,26 @@ async def extract_pdf(file: UploadFile = File(...)):
 
     # Save uploaded PDF to a temporary file
     # We need a file path for pdfplumber to read
+    content = await file.read(5_000_001)
+    if len(content) > 5_000_000:
+        raise HTTPException(status_code=413, detail="That file is too large (5 MB maximum)")
+    if not content.startswith(b"%PDF-"):  # the type the client reports can be faked
+        raise HTTPException(status_code=400, detail="That file isn't a valid PDF")
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        content = await file.read()
         tmp.write(content)
         tmp_path = tmp.name
 
     try:
         text = ""
         with pdfplumber.open(tmp_path) as pdf:
-            for page in pdf.pages:
+            # Capped so a crafted file cannot tie the service up: 20 pages, 60,000 characters
+            for page in pdf.pages[:20]:
                 # extract_text() returns None for image-based pages
                 # "or empty string" handles that gracefully
                 text += page.extract_text() or ""
+                if len(text) > 60000:
+                    break
+            text = text[:60000]
 
         print(f"PDF extracted: {len(text)} characters from {len(pdf.pages)} pages")
 
@@ -852,8 +891,8 @@ async def extract_pdf(file: UploadFile = File(...)):
 # check (action verbs) uses Groq.
 # ─────────────────────────────────────────────
 class ATSRequest(BaseModel):
-    cv_text: str
-    job_description: str
+    cv_text: str = Field(max_length=60000)
+    job_description: str = Field(max_length=30000)
 
 
 # ── CHECK 1: Parse-ability ───────────────────
@@ -1447,9 +1486,9 @@ def _extract_job_description(html, selectors):
 
 def _scrape_description(url, selectors):
     try:
-        response = http_requests.get(
-            url, headers=_SCRAPE_HEADERS, timeout=8, allow_redirects=True
-        )
+        # safe_get only allows https links to the job sites we read, re-checks every redirect,
+        # and refuses private or internal addresses (see security.py)
+        response = security.safe_get(url, headers=_SCRAPE_HEADERS, timeout=8)
         if response.status_code != 200:
             return None
         return _extract_job_description(response.text, selectors)
@@ -1546,11 +1585,11 @@ def scrape_adzuna_description(url):
 # Returns full job description or empty string if fails
 # ─────────────────────────────────────────────
 class ScrapeRequest(BaseModel):
-    url: str
-    source: str  # "reed" or "adzuna"
-    title: str = ""
-    company: str = ""
-    location: str = "london"
+    url: str = Field(max_length=2000)
+    source: str = Field(max_length=20)  # "reed" or "adzuna"
+    title: str = Field("", max_length=200)
+    company: str = Field("", max_length=200)
+    location: str = Field("london", max_length=100)
 
 
 @app.post("/jobs/scrape-description")
@@ -1602,21 +1641,21 @@ def scout_analyse(request: dict):
     # The Sponsorship Scout's brain for one student. The backend sends the student's profile and
     # the roles it has already shown; this searches, reads each posting for sponsorship wording
     # and returns a short list with the evidence for every pick. Nothing is stored here.
-    role = str(request.get("role") or "").strip()
+    role = str(request.get("role") or "").strip()[:120]
     if not role:
         return {"picks": [], "skipped_no_sponsorship": 0, "considered": 0, "error": "No target role set"}
     body = {
         "query": role,
-        "location": request.get("location") or "london",
-        "visa_type": request.get("visa_type") or "",
+        "location": str(request.get("location") or "london")[:100],
+        "visa_type": str(request.get("visa_type") or "")[:40],
     }
     if request.get("part_time"):
         body["part_time"] = True
     found = search_jobs(body)
     limit = max(1, min(int(request.get("limit") or 5), 10))
-    picks, skipped = scout.pick(
-        found.get("jobs", []), role, request.get("skills") or [], seen=request.get("seen") or [], limit=limit
-    )
+    skills = [str(x)[:60] for x in (request.get("skills") or [])[:100]]
+    seen = [str(x)[:500] for x in (request.get("seen") or [])[:1000]]
+    picks, skipped = scout.pick(found.get("jobs", []), role, skills, seen=seen, limit=limit)
     return {
         "picks": picks,
         "skipped_no_sponsorship": skipped,
@@ -1636,11 +1675,11 @@ def search_jobs(request: dict):
     # Supports location, industry, employment type, and an
     # inferred remote/hybrid/on-site filter
     # ─────────────────────────────────────────────
-    query = request.get("query", "")
+    query = str(request.get("query", ""))[:200]
     if not query:
         return {"jobs": [], "count": 0}
 
-    location = request.get("location") or "london"
+    location = str(request.get("location") or "london")[:100]
     full_time = request.get("full_time")
     part_time = request.get("part_time")
     category = request.get("category") or None
@@ -1701,7 +1740,7 @@ def search_jobs(request: dict):
 
     # Compare each job's published salary with the Skilled Worker figures, for this student's
     # visa type. Information only: see visa_rules.py for what it can and cannot confirm.
-    visa_type = request.get("visa_type") or ""
+    visa_type = str(request.get("visa_type") or "")[:40]
     for job in unique_jobs:
         job["salary_check"] = visa_rules.assess(
             job.get("salary", ""), visa_type, job.get("salary_is_predicted", False)
@@ -1718,9 +1757,9 @@ def search_jobs(request: dict):
 
 
 class RecheckRequest(BaseModel):
-    title: str
-    company: str
-    location: str = "london"
+    title: str = Field(max_length=200)
+    company: str = Field(max_length=200)
+    location: str = Field("london", max_length=100)
 
 
 @app.post("/jobs/recheck")
@@ -1791,9 +1830,9 @@ def recheck_job(request: RecheckRequest):
 
 
 class CompanyRolesRequest(BaseModel):
-    company: str
-    exclude_title: str = ""
-    location: str = "london"
+    company: str = Field(max_length=200)
+    exclude_title: str = Field("", max_length=200)
+    location: str = Field("london", max_length=100)
 
 
 @app.post("/jobs/company-roles")
@@ -2091,12 +2130,12 @@ def _llm_json(prompt):
 
 
 class InterviewQuestionsRequest(BaseModel):
-    job_title: str
-    company: str = ""
-    description: str = ""
-    user_skills: list = []
-    missing_skills: list = []
-    count: int = 8
+    job_title: str = Field(max_length=200)
+    company: str = Field("", max_length=200)
+    description: str = Field("", max_length=20000)
+    user_skills: list = Field([], max_length=100)
+    missing_skills: list = Field([], max_length=50)
+    count: int = Field(8, ge=1, le=12)
 
 
 @app.post("/interview/questions")
@@ -2175,10 +2214,10 @@ def answer_signals(answer):
 
 
 class InterviewFeedbackRequest(BaseModel):
-    question: str
-    answer: str
-    job_title: str = ""
-    description: str = ""
+    question: str = Field(max_length=1000)
+    answer: str = Field(max_length=8000)
+    job_title: str = Field("", max_length=200)
+    description: str = Field("", max_length=20000)
 
 
 @app.post("/interview/feedback")
@@ -2234,9 +2273,9 @@ Return ONLY a JSON object:
 
 
 class InterviewPackRequest(BaseModel):
-    job_title: str
-    company: str = ""
-    description: str = ""
+    job_title: str = Field(max_length=200)
+    company: str = Field("", max_length=200)
+    description: str = Field("", max_length=20000)
 
 
 @app.post("/interview/pack")
@@ -2266,11 +2305,11 @@ Return ONLY a JSON object:
 
 
 class CvQuestionsRequest(BaseModel):
-    cv_text: str
-    job_title: str = ""
-    company: str = ""
-    description: str = ""
-    count: int = 4
+    cv_text: str = Field(max_length=60000)
+    job_title: str = Field("", max_length=200)
+    company: str = Field("", max_length=200)
+    description: str = Field("", max_length=20000)
+    count: int = Field(4, ge=1, le=6)
 
 
 def _norm(text):

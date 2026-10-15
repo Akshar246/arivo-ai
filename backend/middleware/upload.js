@@ -2,73 +2,31 @@ const multer = require("multer");
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
+const crypto = require("crypto");
+
+// CVs are processed and deleted straight away. They go to a private temp folder under a name the
+// server chooses, never the name the client sent.
+const uploadsDir = path.join(os.tmpdir(), "arivo-cv-uploads");
+fs.mkdirSync(uploadsDir, { recursive: true, mode: 0o700 });
 
 const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    console.log("\n===== MULTER DESTINATION DEBUG =====");
-    console.log("Current __dirname:", __dirname);
-
-    const localUploadsDir = path.join(__dirname, "../uploads");
-    console.log("Local uploads path:", localUploadsDir);
-    console.log("Local uploads EXISTS:", fs.existsSync(localUploadsDir));
-
-    let localIsWritable = false;
-    if (fs.existsSync(localUploadsDir)) {
-      try {
-        fs.accessSync(localUploadsDir, fs.constants.W_OK);
-        localIsWritable = true;
-        console.log("Local uploads IS WRITABLE");
-      } catch (e) {
-        console.log("Local uploads NOT WRITABLE:", e.code);
-      }
-    }
-
-    let uploadsDir;
-    if (fs.existsSync(localUploadsDir) && localIsWritable) {
-      uploadsDir = localUploadsDir;
-      console.log("CHOICE: Using LOCAL folder");
-    } else {
-      uploadsDir = path.join(os.tmpdir(), "cv-uploads");
-      console.log("CHOICE: Using /TMP folder (reason: local not available)");
-    }
-
-    try {
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir, { recursive: true });
-        console.log("Created:", uploadsDir);
-      }
-    } catch (mkErr) {
-      console.log("ERROR creating dir:", mkErr.message);
-    }
-
-    console.log("FINAL PATH:", uploadsDir);
-    console.log("====================================\n");
-
-    cb(null, uploadsDir);
-  },
-
-  filename: function (req, file, cb) {
-    cb(null, Date.now() + "-" + file.originalname);
-  },
+  destination: (req, file, cb) => cb(null, uploadsDir),
+  filename: (req, file, cb) => cb(null, `${crypto.randomBytes(16).toString("hex")}.pdf`),
 });
 
+// The type the browser reports can be faked, so this is only a first filter.
+// The controller also checks the file really starts with the PDF signature.
 const fileFilter = (req, file, cb) => {
-  const isPDF =
-    file.mimetype === "application/pdf" ||
-    file.mimetype === "application/octet-stream" ||
-    file.originalname.toLowerCase().endsWith(".pdf");
-
-  if (isPDF) {
-    cb(null, true);
-  } else {
-    cb(new Error("Only PDF files are allowed"), false);
-  }
+  const okType = file.mimetype === "application/pdf" || file.mimetype === "application/octet-stream";
+  const okName = file.originalname.toLowerCase().endsWith(".pdf");
+  if (okType && okName) return cb(null, true);
+  const err = new Error("Only PDF files are allowed");
+  err.status = 400;
+  cb(err, false);
 };
 
-const upload = multer({
-  storage: storage,
-  fileFilter: fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 },
+module.exports = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 0 },
 });
-
-module.exports = upload;
