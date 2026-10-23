@@ -15,6 +15,7 @@ import EmailLink from "./pages/EmailLink";
 import { readEmailLink } from "./constants/emailLink";
 import Legal from "./pages/Legal";
 import LegalLinks from "./components/LegalLinks";
+import FeedbackModal from "./components/FeedbackModal";
 
 /// ─────────────────────────────────────────────
 // NAVIGATION
@@ -23,7 +24,7 @@ import LegalLinks from "./components/LegalLinks";
 // A fixed bottom tab bar takes over primary navigation — always
 // visible, thumb-reachable, no menu to open or close.
 // ─────────────────────────────────────────────
-function NavBar({ page, setPage }) {
+function NavBar({ page, setPage, onFeedback }) {
   const { logout } = useAuth();
 
   const navItems = [
@@ -55,6 +56,9 @@ function NavBar({ page, setPage }) {
                 {item.label}
               </button>
             ))}
+            <button className="nb-link nb-feedback" onClick={onFeedback}>
+              Feedback
+            </button>
             <ThemeToggle />
             <div className="nb-divider" />
             <button className="nb-logout" onClick={logout} title="Log out">
@@ -321,6 +325,7 @@ function AppRouter() {
   const { currentUser } = useAuth();
   const [emailLink, setEmailLink] = useState(readEmailLink);
   const [legal, setLegal] = useState(readLegal);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   useEffect(() => {
     const onHash = () => setLegal(readLegal());
     window.addEventListener("hashchange", onHash);
@@ -417,10 +422,13 @@ function AppRouter() {
 
   return (
     <div className="ivory" style={{ minHeight: "100vh" }}>
-      <NavBar page={page} setPage={handleNavigate} />
+      <NavBar page={page} setPage={handleNavigate} onFeedback={() => setFeedbackOpen(true)} />
       <VerifyBanner />
       {renderPage()}
-      <LegalLinks />
+      <LegalLinks onFeedback={() => setFeedbackOpen(true)} />
+      {feedbackOpen && (
+        <FeedbackModal page={page === "profile" ? `profile:${profileTab}` : page} onClose={() => setFeedbackOpen(false)} />
+      )}
     </div>
   );
 }

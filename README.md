@@ -37,7 +37,7 @@
 | **ATS check with an International Student Lens** | Scores a CV the way applicant tracking software parses it, and flags conventions from other countries, such as a photo or date of birth, that quietly fail UK screening. |
 | **Application tracker** | Saved, applied, interview, offer, rejected, with notes and a stored interview pack per role. |
 | **Skill gap plan** | The student's CV skills against current London postings for their target role, with a learning plan. |
-| **Privacy and control** | A plain-English privacy policy and terms (no sign-in needed), "Download my data" for a full copy of what is held about you, account deletion that removes everything, and an opt-in Scout with one-click unsubscribe. |
+| **Privacy and control** | A plain-English privacy policy and terms (no sign-in needed), "Download my data" for a full copy of what is held about you, an in-app feedback form that goes straight to me, account deletion that removes everything, and an opt-in Scout with one-click unsubscribe. |
 | **Light and dark themes** | One design system with shared tokens, tested at phone and desktop widths. |
 
 <table>
@@ -136,7 +136,7 @@ More detail is in [`docs/architecture.md`](docs/architecture.md).
 Every push and pull request runs a pipeline ([`ci.yml`](.github/workflows/ci.yml)) with no real API keys, so it is safe for forks too:
 
 - **Frontend:** lint (zero errors), production build, dependency audit.
-- **Backend:** every file parses, **19 tests**, dependency audit. The tests cover the behaviours that matter for security: sessions stop working after a password reset, forged, expired and unsigned tokens are refused, the scheduler endpoint rejects a wrong or short secret, the unsubscribe link cannot be made from a login token, rate limits, and HTML in names cannot inject markup into emails.
+- **Backend:** every file parses, **26 tests**, dependency audit. The tests cover the behaviours that matter for security: sessions stop working after a password reset, forged, expired and unsigned tokens are refused, the scheduler endpoint rejects a wrong or short secret, the unsubscribe link cannot be made from a login token, rate limits, and HTML in names cannot inject markup into emails.
 - **AI service:** **95 tests**, dependency audit. They cover sponsor matching, the quote check behind the CV questions, employer board parsing for all four providers, register verification, ranking, the visa salary rules, the Scout's wording reader, employer name matching, and the security layer (authentication, rate limits, request-forgery protection, input limits, CORS). One test fails if a new route is ever added without authentication.
 - **Secret scan** over the full git history, and **weekly dependency update pull requests** from Dependabot.
 
@@ -154,6 +154,7 @@ What is not covered yet: automated tests for the React screens. They are checked
 - [x] Jobs from verified sponsor employers, early career ranking, full descriptions
 - [x] One design system with light and dark themes
 - [x] Privacy policy, terms of use and a data download, written from what the code actually stores
+- [x] In-app feedback and a plan for testing with real students ([`docs/user-research.md`](docs/user-research.md))
 - [x] Security audit and hardening of all three services ([`docs/security.md`](docs/security.md))
 - [x] Stricter employer name matching, measured on real data
 - [x] Sponsorship Scout: daily scan, posting-wording evidence, digest email with one-click unsubscribe, dashboard panel

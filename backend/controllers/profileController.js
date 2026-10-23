@@ -1,6 +1,7 @@
 const User = require("../models/User");
 const Application = require("../models/Application");
 const ScoutPick = require("../models/ScoutPick");
+const Feedback = require("../models/Feedback");
 const bcrypt = require("bcryptjs");
 const axios = require("axios");
 const { aiHeaders } = require("../utils/aiHeaders");
@@ -187,6 +188,7 @@ const deleteAccount = async (req, res) => {
     if (!ok) return res.status(400).json({ message: "Incorrect password." });
     await Application.deleteMany({ user: user._id });
     await ScoutPick.deleteMany({ user: user._id });
+    await Feedback.deleteMany({ user: user._id });
     await User.deleteOne({ _id: user._id });
     res.json({ ok: true });
   } catch (err) {
@@ -228,14 +230,15 @@ const exportData = async (req, res) => {
   try {
     const user = await User.findById(req.user.id).lean();
     if (!user) return gone(res);
-    const [applications, scoutPicks] = await Promise.all([
+    const [applications, scoutPicks, feedback] = await Promise.all([
       Application.find({ user: user._id }).lean(),
       ScoutPick.find({ user: user._id }).lean(),
+      Feedback.find({ user: user._id }).lean(),
     ]);
     const { password, verifyTokenHash, verifyExpiresAt, resetTokenHash, resetExpiresAt, __v, ...account } = user;
     res.setHeader("Content-Disposition", 'attachment; filename="arivo-my-data.json"');
     res.setHeader("Cache-Control", "no-store");
-    res.json({ exportedAt: new Date().toISOString(), account, applications, scoutPicks });
+    res.json({ exportedAt: new Date().toISOString(), account, applications, scoutPicks, feedback });
   } catch (err) {
     console.error("Export error:", err.message);
     res.status(500).json({ message: "Could not prepare your data" });

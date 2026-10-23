@@ -17,6 +17,7 @@ export const LEGAL = {
           "Details you choose to give: your visa type and end date, your target role and what you are looking for.",
           "Your CV, if you upload it: we keep the text we read from it (up to 20,000 characters) and the skills found. The PDF file itself is deleted as soon as it has been read.",
           "What you create in the app: the jobs in your tracker with your notes, saved interview packs, your latest CV check result, skill gap results, and the roles the Sponsorship Scout picked for you.",
+          "Feedback you send from the app: your message, which screen you were on, an optional rating, and your email only if you tick the box saying I may reply.",
           "Technical records kept by our hosting providers, such as your IP address in server logs.",
         ],
       },
